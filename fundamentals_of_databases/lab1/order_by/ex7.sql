@@ -30,9 +30,9 @@ WHERE Country IN ('France', 'Spain')
 ORDER BY Country, CompanyName ASC;
 
 --7
-SELECT *
+SELECT OrderID, OrderDate, Freight
 FROM Orders
 WHERE OrderDate BETWEEN '1997-01-01' AND '1997-12-31'
-ORDER BY OrderDate DESC, Freight ASC;
+ORDER BY MONTH(OrderDate) DESC, Freight ASC;
 
 

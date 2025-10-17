@@ -7,3 +7,4 @@ ORDER BY Country;
 SELECT DISTINCT Country
 FROM Suppliers
 ORDER BY Country;
+

@@ -28,6 +28,7 @@ JOIN [Order Details] AS od
 ON o.OrderID = od.OrderID
 WHERE o.OrderID = 10250;
 
+-- 6
 SELECT CompanyName, 
        Phone + ', ' + Fax AS ContactDetails 
 FROM Suppliers;
