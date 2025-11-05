@@ -8,3 +8,4 @@ p_exact  # ~0.009048376
 # aproksymacja Poissona
 lambda <- n * p
 p_pois <- ppois(3, lambda = lambda)
+cat(p_pois, "/n")

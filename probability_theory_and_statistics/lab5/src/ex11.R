@@ -26,3 +26,4 @@ for(m in 1:r){
 
 P_all_groups <- P
 P_all_groups
+print(P_all_groups)

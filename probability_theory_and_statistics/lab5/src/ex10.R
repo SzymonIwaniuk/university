@@ -9,7 +9,8 @@ multinomial_cdf <- function(x, n, p) {
   all_combs <- all_combs[rowSums(all_combs) == n, ]
   
   # Sumujemy prawdopodobieństwa
-  sum(apply(all_combs, 1, function(row) dmultinom(row, size = n, prob = p)))
+  result <- sum(apply(all_combs, 1, function(row) dmultinom(row, size = n, prob = p)))
+  print(result)
 }
 
 multinomial_cdf(c(2,1,2), n=5, p=c(0.3,0.2,0.5))
