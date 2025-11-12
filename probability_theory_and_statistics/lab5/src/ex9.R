@@ -25,7 +25,9 @@ print(table)
 marginals <- apply(table[,1:3], 2, function(x) tapply(table$prob, x, sum))
 print(marginals)
 
+
 # Kowariancje
+# Cov(X,Y)=E[XY]−E[X]E[Y]
 cov_matrix <- matrix(0, nrow=3, ncol=3)
 for(i in 1:3){
   for(j in 1:3){
