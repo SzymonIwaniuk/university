@@ -2,5 +2,4 @@
 # Obliczamy P(X <= 10) - P(X <= 5)
 prob <- pchisq(10, df = 3) - pchisq(5, df = 3)
 
-# Wyświetlamy wynik
 print(prob)
