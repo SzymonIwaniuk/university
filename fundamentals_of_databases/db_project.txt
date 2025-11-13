@@ -1,0 +1,38 @@
+Projekt Bazy Danych pt 11.30
+Autorzy: Szymon Iwaniuk, Miłosz Szułakiewicz, Wiktor Sołtys
+
+- Współpraca
+	1. Komunikacja oraz przydzielanie tasków będzie się odbywać na Jira oraz serwerze Discord.
+	2. Całość implementacji będzie odbywać się na repozytorium git https://github.com/mszulak/DB-Project-furniture-company.git
+		
+- Zarys projektu
+	
+	1. Conceptual modeling - od strony biznesowej
+	    - Projekt bazy danych (schemat koncepcyjny – diagram ERD);
+	    - Opis poszczególnych tabel w kontekście relacji (co reprezentują, jakie mają znaczenie).
+	    - Identyfikacja podstawowych encji:klienci, produkty, zamówienia, pozycje zamówień.
+	    - System powinien umożliwiać generowanie raportów o kosztach produkcji i sprzedaży (tygodniowe, miesięczne, kwartalne, roczne)
+	
+	2. Logical modeling - ogólna logika projektu (relacje)
+		- Opis tabel z nazwami pól, typami danych i ich znaczeniem (czyli jak model koncepcyjny przekłada się na logiczną strukturę relacyjną);
+		- Zdefiniowaniewarunków integralności (PRIMARY KEY, FOREIGN KEY, UNIQUE, CHECK, NOT NULL);
+		- Propozycja i definicjawidoków(VIEW) – czyli logicznych perspektyw danych;
+		- Zaplanowanierelacji między tabelami(1:N, N:M itd.);
+		- Projektowanieindeksów– na poziomie logicznym (czyli decyzja, które pola warto indeksować, niekoniecznie jeszcze implementacja).
+		
+	3. Physical modeling - faktyczna implementacja
+		- Zaimplementowanie bazy danych(czyli kod SQL CREATE TABLE itd.)
+		- Wygenerowanie danych(INSERT – testowe dane: 100 zamówień, kilkunastu klientów, itd.).
+		- Zdefiniowanie widoków w SQL (CREATE VIEW).
+		- Zdefiniowanie operacji na danych– procedury składowane, triggery, funkcje.
+		- Zdefiniowanie indeksów(CREATE INDEX).
+		- Zdefiniowanie uprawnień(role, GRANT, REVOKE).
+		- Sprawozdanie techniczne– pełny kod SQL oraz dokumentacja implementacji.
+
+- Dokumentacja
+	1. Schemat bazy danych (w postaci diagramu) + opis poszczególnych tabel (nazwy pól, typ danych i znaczenie każdego pola, a także opis warunków integralności, jakie zostały zdefiniowane dla danego pola + kod generujący daną tabelę).
+	2. Spis widoków wraz z kodem, który je tworzy oraz informacją co one przedstawiają;
+	3. Spis procedur składowanych, triggerów, funkcji wraz z ich kodem i informacją co one robią.
+	4. Informacje odnośnie wygenerowanych danych;
+	5. Określenie uprawnień do danych - opis ról wraz z przyporządkowaniem do jakich elementów dana rola powinna mieć uprawnienia;
+	6. Informacja, do jakich pól stworzone są indeksy.
