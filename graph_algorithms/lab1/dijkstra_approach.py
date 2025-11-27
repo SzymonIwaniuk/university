@@ -2,15 +2,16 @@ from build_graph import build_graph
 from heapq import heappush, heappop
 import dimacs
 
+
 def dijkstra(path, loader, s, t):
     V, L = loader(path)
     graph = build_graph(path, loader)
 
-    queue = [(-float('inf'), s)]
+    queue = [(-float("inf"), s)]
     parent = [None] * (V + 1)
     parent[s] = s
-    distances = [float('-inf')] * (V + 1)
-    distances[s] = float('inf')
+    distances = [float("-inf")] * (V + 1)
+    distances[s] = float("inf")
 
     while queue:
         neg_weight, u = heappop(queue)
@@ -37,11 +38,14 @@ def dijkstra(path, loader, s, t):
     restore.reverse()
     return restore
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     import os
-    
 
     all_graphs = [f for f in os.listdir("./graphs-lab1") if f != "__init__.py"]
 
     for file_name in all_graphs:
-        print(f"{file_name}\n", dijkstra(f"./graphs-lab1/{file_name}", dimacs.loadWeightedGraph, 1, 2))
+        print(
+            f"{file_name}\n",
+            dijkstra(f"./graphs-lab1/{file_name}", dimacs.loadWeightedGraph, 1, 2),
+        )

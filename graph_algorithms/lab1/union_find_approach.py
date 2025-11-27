@@ -3,7 +3,7 @@ import dimacs
 
 def union_find_approach(path, loader, s, t):
     V, L = loader(path)
-     
+
     p = [i for i in range(V + 1)]
     r = [0] * (V + 1)
 
@@ -26,7 +26,6 @@ def union_find_approach(path, loader, s, t):
             if r[x] == r[y]:
                 r[y] += 1
 
-    
     def dfs(u, graph, visited):
         nonlocal restore
 
@@ -41,10 +40,9 @@ def union_find_approach(path, loader, s, t):
                     return True
 
         return False
-            
 
     edges = set()
-    L.sort(key=lambda tup:  tup[2], reverse=True)
+    L.sort(key=lambda tup: tup[2], reverse=True)
     for x, y, c in L:
         if find(x) != find(y):
             union(x, y)
@@ -69,14 +67,20 @@ def union_find_approach(path, loader, s, t):
     restore = []
     dfs(s, graph, visited)
     return restore[::-1]
-    
-if __name__ == '__main__':
+
+
+if __name__ == "__main__":
     import os
     import sys
 
-
     sys.setrecursionlimit(100000)
     all_graphs = [f for f in os.listdir("./graphs-lab1") if f != "__init__.py"]
-    
+
     for file_name in all_graphs:
-        print(f"{file_name}\n", union_find_approach(f"./graphs-lab1/{file_name}", dimacs.loadWeightedGraph, 1, 2))
+        print(
+            f"{file_name}\n",
+            union_find_approach(
+                f"./graphs-lab1/{file_name}", dimacs.loadWeightedGraph, 1, 2
+            ),
+        )
+

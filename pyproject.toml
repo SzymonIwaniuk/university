@@ -1,9 +1,15 @@
 [project]
 name = "university"
 version = "0.1.0"
-description = "Add your description here"
+description = "Repository for code from AGH CS courses"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "big-o>=0.11.0",
+    "black>=25.11.0",
+]
+
+
+packages = [
+    
 ]
