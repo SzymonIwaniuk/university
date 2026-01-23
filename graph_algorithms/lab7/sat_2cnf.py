@@ -10,7 +10,7 @@ def create_implication_graph(E : list):
     return G
 
 
-def zad3(E):
+def sat_2cnf(E):
     G = create_implication_graph(E)
     SCC = nx.strongly_connected_components(G)
     
@@ -21,4 +21,5 @@ def zad3(E):
     return True
 
 
-sat_checker(zad3)
+if __name__ == "__main__":
+    sat_checker(sat_2cnf)

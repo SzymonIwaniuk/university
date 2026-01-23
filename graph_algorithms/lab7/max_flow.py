@@ -1,7 +1,7 @@
 from checker import maxflow_checker
 import networkx as nx
 
-def zad2(V, E):
+def max_flow(V, E):
     G = nx.DiGraph()
     for u, v, cap in E:
         G.add_edge(u, v)
@@ -10,4 +10,5 @@ def zad2(V, E):
     return nx.maximum_flow(G, 1, V)[0]
 
 
-maxflow_checker(zad2)
+if __name__ == "__main__":
+    maxflow_checker(max_flow)
