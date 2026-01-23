@@ -2,7 +2,7 @@
 -- za przesytke)
 
 SELECT e.FirstName, e.LastName
-         , SUM(od.UnitPrice * od.Quantity + o.Freight) AS TotalOrderValue
+         , SUM((od.UnitPrice * od.Quantity) * (1 - od.Discount) + o.Freight) AS TotalOrderValue
 FROM Employees e
 JOIN Orders o
     ON e.EmployeeID = o.EmployeeID

@@ -3,14 +3,21 @@
 -- sprzedazy oraz srednia wartosó zamówienia w firmie. Wyniki posortuj malejaco wedtug wartosci sprzedazy.
 
 
-SELECT e.FirstName,
-     e.LastName,
-    e.Title,
-    (SELECT COUNT(DISTINCT o.CustomerID)
-    FROM Orders o
-    WHERE e.EmployeeID = o.EmployeeID) AS clients,
-    (SELECT SUM(od.UnitPrice * od.Quantity)
-    FROM [Order Details] od
+SELECT 
+    e.FirstName,
+    e.LastName,
+    e.Title, 
+    (SELECT 
+        COUNT(DISTINCT o.CustomerID)
+    FROM 
+        Orders o
+    WHERE
+        e.EmployeeID = o.EmployeeID
+    ) AS clients,
+    (SELECT
+        SUM(od.UnitPrice * od.Quantity)
+    FROM 
+    [Order Details] od
     JOIN Orders o
         ON o.OrderID = od.OrderID
     WHERE e.EmployeeID = o.EmployeeID) AS total,

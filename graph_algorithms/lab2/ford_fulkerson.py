@@ -21,7 +21,7 @@ def dfs(s: int, t: int, V: int, graph: List[List[int]], path=None, visited=None)
 
     for v, val in enumerate(graph[s]):
         if not visited[v] and val > 0:
-            result_path = dfs(v, t, visited, graph, path.copy(), visited)
+            result_path = dfs(v, t, V, graph, path.copy(), visited)
             if result_path:
                 return result_path
 
