@@ -17,5 +17,4 @@ def build_graph(path: str, loader):
     return graph
 
 if __name__ == "__main__":
-    print(build_graph("/home/szymon/Desktop/pliki/university/graph_algorithms/lab1/graphs-lab1/g1", dimacs.loadWeightedGraph))
-    print(build_graph("/home/szymon/Desktop/pliki/university/graph_algorithms/lab1/graphs-lab1/clique5", dimacs.loadDirectedWeightedGraph))
+    print("D")
