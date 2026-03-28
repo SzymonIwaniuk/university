@@ -1,0 +1,6 @@
+Potomek (PID: (102))
+Potomek (PID: (102))
+Potomek (PID: (104))
+Potomek (PID: (104))
+Potomek (PID: (103))
+Potomek (PID: (103))
