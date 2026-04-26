@@ -6,15 +6,21 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+int option = 0;
 void handler(int sig) { printf("Handler called for signal %d\n", sig); }
+
 void sig_default(int sig) { signal(sig, SIG_DFL); }
+
 void sig_ignore(int sig) { signal(sig, SIG_IGN); }
 
 void sig_handle(int sig) { signal(sig, handler); }
+
 void sig_mask(int sig) {
+  // signal set
   sigset_t mask;
   sigemptyset(&mask);
   sigaddset(&mask, sig);
+  // signals in set are blocked
   sigprocmask(SIG_BLOCK, &mask, NULL);
 }
 
@@ -25,20 +31,21 @@ void sig_unblock(int sig) {
   sigprocmask(SIG_UNBLOCK, &mask, NULL);
 }
 
-int main(int argc, char *argv[]) {
-  int option;
+void au(int sig, siginfo_t *info, void *ucontext) {
+  option = info->si_value.sival_int;
+}
 
-  if (strcmp(argv[1], "default") == 0) {
-    option = 1;
-  } else if (strcmp(argv[1], "ignore") == 0) {
-    option = 2;
-  } else if (strcmp(argv[1], "handle") == 0) {
-    option = 3;
-  } else if (strcmp(argv[1], "mask") == 0) {
-    option = 4;
-  } else {
-    return -1;
-  }
+int main(int argc, char *argv[]) {
+  // config structure
+  struct sigaction act;
+  act.sa_sigaction = au;
+  // set which signals should be blocked during handler
+  sigemptyset(&act.sa_mask);
+  act.sa_flags = SA_SIGINFO;
+  // handler for signal SIGUSR2
+  sigaction(SIGUSR2, &act, NULL);
+
+  pause();
 
   switch (option) {
   case 1:

@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -5,18 +6,21 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#ifdef DYNAMIC_LOAD
+#include <dlfcn.h>
+void *lib_handle;
+void (*sig_default)(int);
+void (*sig_ignore)(int);
+void (*sig_handle)(int);
+void (*sig_mask)(int);
+#else
+void sig_default(int sig);
+void sig_ignore(int sig);
+void sig_handle(int sig);
+void sig_mask(int sig);
+#endif
 
-void handler(int sig) { printf("Handler called for signal %d\n", sig); }
-void sig_default(int sig) { signal(sig, SIG_DFL); }
-void sig_ignore(int sig) { signal(sig, SIG_IGN); }
-
-void sig_handle(int sig) { signal(sig, handler); }
-void sig_mask(int sig) {
-  sigset_t mask;
-  sigemptyset(&mask);
-  sigaddset(&mask, sig);
-  sigprocmask(SIG_BLOCK, &mask, NULL);
-}
+int option = 0;
 
 void sig_unblock(int sig) {
   sigset_t mask;
@@ -25,20 +29,30 @@ void sig_unblock(int sig) {
   sigprocmask(SIG_UNBLOCK, &mask, NULL);
 }
 
-int main(int argc, char *argv[]) {
-  int option;
+void au(int sig, siginfo_t *info, void *ucontext) {
+  option = info->si_value.sival_int;
+}
 
-  if (strcmp(argv[1], "default") == 0) {
-    option = 1;
-  } else if (strcmp(argv[1], "ignore") == 0) {
-    option = 2;
-  } else if (strcmp(argv[1], "handle") == 0) {
-    option = 3;
-  } else if (strcmp(argv[1], "mask") == 0) {
-    option = 4;
-  } else {
+int main(int argc, char *argv[]) {
+#ifdef DYNAMIC_LOAD
+  lib_handle = dlopen("../lib/libsignals.so", RTLD_LAZY);
+  if (!lib_handle) {
     return -1;
   }
+
+  sig_default = dlsym(lib_handle, "sig_default");
+  sig_ignore = dlsym(lib_handle, "sig_ignore");
+  sig_handle = dlsym(lib_handle, "sig_handle");
+  sig_mask = dlsym(lib_handle, "sig_mask");
+#endif
+
+  struct sigaction act;
+  act.sa_sigaction = au;
+  sigemptyset(&act.sa_mask);
+  act.sa_flags = SA_SIGINFO;
+  sigaction(SIGUSR2, &act, NULL);
+
+  pause();
 
   switch (option) {
   case 1:
@@ -81,5 +95,8 @@ int main(int argc, char *argv[]) {
   }
 
   printf("Loop executed completely\n");
+#ifdef DYNAMIC_LOAD
+  dlclose(lib_handle);
+#endif
   return 0;
 }
