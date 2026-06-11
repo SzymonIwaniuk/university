@@ -42,8 +42,9 @@ sem_t *sem_full_normal, *sem_empty_normal, *sem_mutex_normal;
 sem_t *sem_order[N];
 
 void generate_string(char *buf) {
-  for (int i = 0; i < STR_LEN; i++)
+  for (int i = 0; i < STR_LEN; i++) {
     buf[i] = CHARSET[rand() % (int)(sizeof CHARSET - 1)];
+  }
   buf[STR_LEN] = '\0';
 }
 
@@ -215,8 +216,9 @@ int main(void) {
     }
   }
 
-  for (int i = 0; i < N + M; i++)
+  for (int i = 0; i < N + M; i++) {
     wait(NULL);
+  }
 
   shm_unlink(SHM_NAME);
   sem_unlink(SEM_ANY);

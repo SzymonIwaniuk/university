@@ -1,0 +1,137 @@
+
+1. mikro task code filp
+
+# radar_echo_sigma = np.array([[2, -1.5],
+#                              [-1.5, 2]]) # E_y
+
+
+radar_echo_sigma2 = np.array([[2, 1.5],
+                             [1.5, 2]]) # E_y
+
+radar_echo_prec2 = inv(radar_echo_sigma2) # E_y^(-1)
+
+_, ax = plt.subplots(1, 2, figsize=(16,8))
+
+mu_xy, sigma_xy = estimate_location_from_echo(radar_echo, radar_echo_prec2, sigma_x, mu_x)
+
+plot_mvn(ax[0], mu_x, sigma_x, None, "Prior assumptions about object location")
+plot_mvn(ax[1], mu_xy, sigma_xy, radar_echo, "Estimated object location and its uncertainty")
+
+
+2. Wyjaśnienie: sigma_x (Prior)
+    Kod: sigma_x = 3 * np.eye(2) daje macierz [[3.0, 0.0], [0.0, 3.0]].
+    Co to jest: Nasza pewność co do założenia początkowego, zanim spojrzymy na radar.
+    3.0 (przekątna): Wielkość marginesu błędu w osiach X i Y.
+    0.0 (poza przekątną): Brak korelacji między osiami (kształt idealnego koła, bez pochylenia).
+
+3. Zmiana: "Uparty Prior" (Ignoruj radar)
+    Sytuacja: Jesteśmy w 100% pewni, że obiekt jest na środku. Radar to tylko szum.
+    Efekt: Ostateczna lokalizacja (posterior) w ogóle nie przesuwa się w stronę odczytu radaru.
+    Kod: Mocno zmniejszamy wartości w macierzy priora.
+
+
+sigma_x_uparty = 0.1 * np.eye(2) # Zmiana z 3 na 0.1
+
+_, ax = plt.subplots(1, 2, figsize=(16,8))
+
+# Używamy zmienionego sigma_x_uparty, ale starego radaru (radar_echo_prec)
+mu_xy, sigma_xy = estimate_location_from_echo(radar_echo, radar_echo_prec, sigma_x_uparty, mu_x)
+
+plot_mvn(ax[0], mu_x, sigma_x_uparty, None, "Prior assumptions about object location")
+plot_mvn(ax[1], mu_xy, sigma_xy, radar_echo, "Estimated object location and its uncertainty")
+
+
+
+4. Zmiana: "Radar-Snajper" (Ufaj tylko maszynie)
+    Sytuacja: Kupiliśmy idealny radar o zerowym błędzie.
+    Efekt: Ostateczna lokalizacja (posterior) "wskakuje" idealnie na odczyt z radaru, ignorując nasze początkowe założenia.
+    Kod: Zmniejszamy wartości w macierzy radaru niemal do zera.
+
+radar_echo_sigma_ultra = np.array([[0.1, 0.0],
+                                   [0.0, 0.1]])
+radar_echo_prec_ultra = inv(radar_echo_sigma_ultra)
+
+_, ax = plt.subplots(1, 2, figsize=(16,8))
+
+mu_xy, sigma_xy = estimate_location_from_echo(radar_echo, radar_echo_prec_ultra, sigma_x, mu_x)
+
+plot_mvn(ax[0], mu_x, sigma_x, None, "Prior assumptions about object location")
+plot_mvn(ax[1], mu_xy, sigma_xy, radar_echo, "Estimated object location and its uncertainty")
+
+
+
+5. Zmiana: "Astygmatyzm" (Błąd tylko w X)
+    Sytuacja: Radar myli się w poziomie (X), ale dobrze mierzy pion (Y).
+    Efekt: Elipsa ufności staje się szerokim, płaskim "naleśnikiem" (brak korelacji).
+    Kod:
+radar_echo_sigma_asym = np.array([[8.0, 0.0],
+                                  [0.0, 0.2]])
+radar_echo_prec_asym = inv(radar_echo_sigma_asym)
+
+_, ax = plt.subplots(1, 2, figsize=(16,8))
+
+mu_xy, sigma_xy = estimate_location_from_echo(radar_echo, radar_echo_prec_asym, sigma_x, mu_x)
+
+plot_mvn(ax[0], mu_x, sigma_x, None, "Prior assumptions about object location")
+plot_mvn(ax[1], mu_xy, sigma_xy, radar_echo, "Estimated object location and its uncertainty")
+
+
+6. Zmiana: "Zaskoczenie" (Przesunięcie Priora)
+    Sytuacja: Zakładamy obiekt w lewym dolnym rogu, a nie na środku.
+    Efekt: Ostateczny wynik zatrzyma się w połowie drogi między naszym założeniem a radarem.
+    Kod:
+
+mu_x_lewy_dolny = np.array([-7.0, -7.0]) # Przesunięcie priora z [0.0, 0.0]
+
+_, ax = plt.subplots(1, 2, figsize=(16,8))
+
+# Przekazujemy nowe mu_x do funkcji
+mu_xy, sigma_xy = estimate_location_from_echo(radar_echo, radar_echo_prec, sigma_x, mu_x_lewy_dolny)
+
+plot_mvn(ax[0], mu_x_lewy_dolny, sigma_x, None, "Prior assumptions about object location")
+plot_mvn(ax[1], mu_xy, sigma_xy, radar_echo, "Estimated object location and its uncertainty")
+
+
+
+7. Krzyżki na lini
+# komentujemy echo radarowe
+# USUŃ LUB ZAKOMENTUJ TĘ LINIĘ:
+# radar_echo_n = mvn.rvs(true_x, radar_echo_sigma, size=N, random_state=1234)
+
+
+# Ręcznie zdefiniowane odczyty na ukośnej linii
+radar_echo_n = np.array([
+    [-8.0,  0.5],
+    [-6.0, -1.5],
+    [-4.0, -3.5],
+    [-2.0, -5.5],
+    [ 0.0, -7.5]
+])
+
+
+1. Rzeczywistość i Pomiary
+To, co istnieje fizycznie i to, co "widzi" urządzenie.
+    true_x: Prawdziwa lokalizacja obiektu. To punkt, w którym obiekt faktycznie się znajduje. W prawdziwym życiu go nie znamy, w symulacji używamy go tylko po to, by wygenerować fałszywe odczyty z radaru.
+    radar_echo: Pojedynczy odczyt z radaru. Zaszumiony punkt (wektor X, Y), który wylosował się gdzieś w pobliżu true_x.
+    radar_echo_n: Wiele odczytów z radaru. Lista (tablica) zawierająca N zaszumionych punktów (np. 5 pomiarów z rzędu).
+    N: Liczba wykonanych skanów radaru (ilość kropek wygenerowanych wokół celu).
+
+2. Nasza Wiedza / Założenia (Prior)
+To, w co wierzymy, zanim spojrzymy na pomiary.
+    mu_x: Środek naszego założenia (Prior Mean). Punkt startowy naszych poszukiwań. Często ustawiany na [0.0, 0.0], jeśli zakładamy, że cel jest na środku. W pętli sekwencyjnej staje się po prostu "naszym obecnym najlepszym strzałem".
+    sigma_x: Niepewność założenia (Prior Covariance). Macierz określająca, jak szeroka jest nasza początkowa "chmura ufności". Jeśli ma duże liczby, nasza wiedza jest słaba. Jeśli małe – jesteśmy bardzo pewni swego.
+
+3. Właściwości Radaru (Likelihood)
+Matematyczny opis tego, jak bardzo psuje się nasze urządzenie.
+    radar_echo_sigma: Szum radaru (Macierz Kowariancji Radaru). Określa fizyczny błąd urządzenia. Decyduje o tym, czy błędy w osi X i Y są ze sobą powiązane (korelacja - skos elipsy) oraz jak bardzo radar pudłuje (wariancje na przekątnej). W funkcji aktualizującej ta zmienna jest często przekazywana pod nazwą argumentu sigma_y.
+    radar_echo_prec: Precyzja radaru. Odwrotność powyższej macierzy (inv(radar_echo_sigma)). Algorytm woli używać precyzji jako "wagi" – im wyższa precyzja, tym bardziej algorytm ufa radarowi.
+
+4. Wynik Końcowy (Posterior)
+Nasz zaktualizowany pogląd na świat po połączeniu Priora z odczytem Radaru.
+    mu_xy: Nowa przewidywana lokalizacja (Posterior Mean). Najlepsze, zaktualizowane oszacowanie miejsca, gdzie znajduje się obiekt. Punkt, do którego przesuwa się środek "kółka".
+    sigma_xy: Nowa niepewność (Posterior Covariance). Zaktualizowana, mniejsza macierz. Reprezentuje to małe kółko/elipsę, które skupia się wokół odczytów radaru. Z każdym pomiarem ta chmura staje się coraz mniejsza.
+
+5. Zmienne Wewnętrzne (w funkcji estimate_location_from_echo)
+Te zmienne pojawiają się tylko na chwilę podczas obliczeń matematycznych:
+    sigma_x_inv: Precyzja naszego założenia (odwrotność sigma_x).
+    sigma_y_inv: Precyzja odczytu (odwrotność sigma_y, czyli kowariancji radaru).

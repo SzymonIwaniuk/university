@@ -7,3 +7,16 @@
 *.iml
 *.swp
 **/Cargo.lock
+**/*.tar.gz
+.ipynb_checkpoints/
+.virtual_documents/
+.RData
+.Rhistory
+.vscode/
+.idea/
+*.swp
+*.beam
+*.o
+*.a
+*.so
+main

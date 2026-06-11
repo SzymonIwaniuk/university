@@ -37,3 +37,5 @@ end.
 
 FF = fun (List) ->
              lists:foldl(F, 0, List).
+     
+end.

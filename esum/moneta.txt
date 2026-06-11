@@ -1,0 +1,45 @@
+# Dla jakich ilości rzutów chcemy zrobić testy? (N)
+lista_N = [10, 20, 50, 100, 200, 500, 1000]
+
+# Ile razy powtarzamy eksperyment, żeby statystyka (niepewność) była wiarygodna? (M)
+M_powtorzen = 100 
+
+# Nagłówek naszej tabeli
+print(f"{'Rzuty (N)':>10} | {'Wynik (P)':>10} | {'Odległość od 0.5':>18} | {'Niepewność':>12} | {'Czy uczciwa?'}")
+print("-" * 75)
+
+# ==========================================
+# 3. GŁÓWNA SYMULACJA
+# ==========================================
+
+for N in lista_N:
+    
+    wyniki_z_powtorzen = []
+    
+    # Zewnętrzna pętla: powtarzamy test M razy, żeby zobaczyć jak skaczą wyniki
+    for _ in range(M_powtorzen):
+        
+        # Wewnętrzna akcja: robimy N rzutów i patrzymy jaki wyszedł wynik
+        suma_orlow = sum(make_coin_fair() for _ in range(N))
+        uczciwosc_pojedyncza = suma_orlow / N
+        
+        wyniki_z_powtorzen.append(uczciwosc_pojedyncza)
+        
+    # --- OBLICZENIA KOŃCOWE DLA DANEGO N ---
+    
+    # Średnia z M powtórzeń (nasz ostateczny uśredniony wynik w tym eksperymencie)
+    ostateczna_uczciwosc = np.mean(wyniki_z_powtorzen)
+    
+    # Odległość od idealnego środka (0.5)
+    odleglosc = abs(ostateczna_uczciwosc - 0.5)
+    
+    # Niepewność (czyli jak bardzo wyniki skakały nam z testu na test - odchylenie std)
+    niepewnosc = np.std(wyniki_z_powtorzen)
+    
+    # Werdykt (Reguła 2 sigm): Czy odległość mieści się w dopuszczalnym błędzie?
+    czy_uczciwa = odleglosc < (2 * niepewnosc)
+    
+    wynik_str = "TAK" if czy_uczciwa else "NIE"
+    
+    # Wypluwamy wiersz do tabeli
+    print(f"{N:10d} | {ostateczna_uczciwosc:10.4f} | {odleglosc:18.4f} | {niepewnosc:12.4f} | {wynik_str:>12}")

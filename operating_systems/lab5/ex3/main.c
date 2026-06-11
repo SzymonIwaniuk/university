@@ -43,8 +43,9 @@ sem_t *sem_full_normal, *sem_empty_normal, *sem_mutex_normal;
 sem_t *sem_order[N];
 
 void generate_string(char *buf) {
-  for (int i = 0; i < STR_LEN; i++)
+  for (int i = 0; i < STR_LEN; i++) {
     buf[i] = CHARSET[rand() % (int)(sizeof CHARSET - 1)];
+  }
   buf[STR_LEN] = '\0';
 }
 
@@ -129,8 +130,9 @@ void manager(void) {
     printf("[Manager] stats: priority=%d normal=%d\n", np, nn);
     fflush(stdout);
 
-    if (sem_trywait(sem_full_normal) != 0)
+    if (sem_trywait(sem_full_normal) != 0) {
       continue;
+    }
 
     sem_wait(sem_empty_priority);
 
@@ -258,8 +260,9 @@ int main(void) {
     exit(1);
   }
 
-  for (int i = 0; i < N + M + 1; i++)
+  for (int i = 0; i < N + M + 1; i++) {
     wait(NULL);
+  }
 
   shm_unlink(SHM_NAME);
   sem_unlink(SEM_ANY);
