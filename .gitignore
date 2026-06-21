@@ -20,3 +20,6 @@
 *.a
 *.so
 main
+.DS_Store
+.venv/
+.env
