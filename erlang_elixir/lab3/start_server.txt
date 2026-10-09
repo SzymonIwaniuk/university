@@ -1,0 +1,16 @@
+# setup
+pollution_server:start().
+pollution_server:add_station("S1", {50.06, 19.94}).
+pollution_server:add_station("S2", {52.22, 21.01}).
+
+Now = erlang:localtime().
+
+pollution_server:add_value("S1", Now, "PM10", 50.5).
+pollution_server:add_value("S2", Date2, "PM10", 60.5).
+
+
+## queries
+pollution_server:get_one_value("S1", Now, "PM10").
+pollution_server:get_station_mean("S1", "PM10").
+pollution_server:get_daily_mean("PM10", {2026, 4, 30}).
+pollution_server:get_area_mean("PM10", {50.06, 19.94}, 2.0).
