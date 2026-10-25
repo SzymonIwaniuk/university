@@ -1,0 +1,14 @@
+Rule 1, maximal match. At the start of 2.*A, FLOATNUM matches 2. (two characters) and INTNUM matches only 2, so the longest match is 2. and the current FLOATNUM(2.) *(*) is what the slides prescribe. SLY itself takes the first rule that matches, not the longest, so the ordering is what enforces maximal match:
+- multi-character operators like ==, <= and .+ are regex rules, which SLY tries before single-character literals;
+- FLOATNUM is defined before INTNUM.
+
+Rule 2, detailed before general. FLOATNUM is defined before INTNUM, and keywords come out of ID through remapping.
+
+Slide 9, literals. Single-character tokens are in literals.
+
+Slide 10, general tokens. Numbers, strings and identifiers are regex rules, both as plain strings and as @_ functions.
+
+Slide 11, keywords. They use the ID['if'] = IF pattern.
+
+Slide 12, the pattern to avoid. The scanner doesn't have separate keyword rules, and breaked comes out as ID(breaked), not BREAK plus ID(ed).
+
