@@ -1,0 +1,106 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2024.1 (win64) Build 5076996 Wed May 22 18:37:14 MDT 2024
+| Date         : Wed Oct 21 11:24:34 2026
+| Host         : UTCALB-05 running 64-bit major release  (build 9200)
+| Command      : report_control_sets -verbose -file toplevel_control_sets_placed.rpt
+| Design       : toplevel
+| Device       : xc7z010
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+Control Set Information
+
+Table of Contents
+-----------------
+1. Summary
+2. Histogram
+3. Flip-Flop Distribution
+4. Detailed Control Set Information
+
+1. Summary
+----------
+
++----------------------------------------------------------+-------+
+|                          Status                          | Count |
++----------------------------------------------------------+-------+
+| Total control sets                                       |    28 |
+|    Minimum number of control sets                        |    28 |
+|    Addition due to synthesis replication                 |     0 |
+|    Addition due to physical synthesis replication        |     0 |
+| Unused register locations in slices containing registers |   107 |
++----------------------------------------------------------+-------+
+* Control sets can be merged at opt_design using control_set_merge or merge_equivalent_drivers
+** Run report_qor_suggestions for automated merging and remapping suggestions
+
+
+2. Histogram
+------------
+
++--------------------+-------+
+|       Fanout       | Count |
++--------------------+-------+
+| Total control sets |    28 |
+| >= 0 to < 4        |     9 |
+| >= 4 to < 6        |     9 |
+| >= 6 to < 8        |     4 |
+| >= 8 to < 10       |     1 |
+| >= 10 to < 12      |     1 |
+| >= 12 to < 14      |     0 |
+| >= 14 to < 16      |     0 |
+| >= 16              |     4 |
++--------------------+-------+
+* Control sets can be remapped at either synth_design or opt_design
+
+
+3. Flip-Flop Distribution
+-------------------------
+
++--------------+-----------------------+------------------------+-----------------+--------------+
+| Clock Enable | Synchronous Set/Reset | Asynchronous Set/Reset | Total Registers | Total Slices |
++--------------+-----------------------+------------------------+-----------------+--------------+
+| No           | No                    | No                     |               5 |            5 |
+| No           | No                    | Yes                    |              22 |           15 |
+| No           | Yes                   | No                     |              62 |           18 |
+| Yes          | No                    | No                     |              16 |            6 |
+| Yes          | No                    | Yes                    |              44 |           18 |
+| Yes          | Yes                   | No                     |              64 |           16 |
++--------------+-----------------------+------------------------+-----------------+--------------+
+
+
+4. Detailed Control Set Information
+-----------------------------------
+
++-------------------+-----------------------------+--------------------------+------------------+----------------+--------------+
+|    Clock Signal   |        Enable Signal        |     Set/Reset Signal     | Slice Load Count | Bel Load Count | Bels / Slice |
++-------------------+-----------------------------+--------------------------+------------------+----------------+--------------+
+|  pgen1/slowclk    |                             | BTN_IBUF[0]              |                1 |              1 |         1.00 |
+|  pgen1/slowclk    | pgen1/out1                  | d2/BTN[0]_0              |                1 |              1 |         1.00 |
+|  d2/BTN[0]_0      |                             | BTN_IBUF[0]              |                1 |              1 |         1.00 |
+|  p1/clkout_b      |                             | BTN_IBUF[0]              |                1 |              1 |         1.00 |
+|  p1/clkout_b      | dbgu1/u1/txline_i_1_n_0     | BTN_IBUF[0]              |                1 |              1 |         1.00 |
+| ~clk_main_BUFG    | dbgu1/u1/tx_chr_start_reg   | BTN_IBUF[0]              |                1 |              1 |         1.00 |
+|  clk_main_BUFG    |                             |                          |                2 |              2 |         1.00 |
+| ~clk_main_BUFG    |                             | BTN_IBUF[0]              |                2 |              3 |         1.50 |
+|  CLK_IN_IBUF_BUFG |                             |                          |                3 |              3 |         1.00 |
+|  pgen1/slowclk    |                             | d2/BTN[0]                |                2 |              4 |         2.00 |
+|  p1/clkout_b      | dbgu1/u1/state[3]_i_1_n_0   | BTN_IBUF[0]              |                1 |              4 |         4.00 |
+| ~clk_main_BUFG    | dbgu1/u1/acntr_reg[0][0]    | BTN_IBUF[0]              |                1 |              4 |         4.00 |
+|  LD_OBUF_BUFG[0]  | cpu1/mem_address[3]_i_1_n_0 |                          |                2 |              4 |         2.00 |
+|  LD_OBUF_BUFG[0]  | cpu1/pc                     | BTN_IBUF[0]              |                2 |              4 |         2.00 |
+|  LD_OBUF_BUFG[0]  | cpu1/mem_data_w[3]_i_1_n_0  |                          |                2 |              4 |         2.00 |
+|  LD_OBUF_BUFG[0]  | cpu1/r0                     | BTN_IBUF[0]              |                1 |              4 |         4.00 |
+|  LD_OBUF_BUFG[0]  | cpu1/r1                     | BTN_IBUF[0]              |                2 |              4 |         2.00 |
+|  LD_OBUF_BUFG[0]  |                             | BTN_IBUF[0]              |                3 |              5 |         1.67 |
+|  p1/clkout_b      | dbgu1/u1/txbuf[6]_i_1_n_0   | BTN_IBUF[0]              |                2 |              7 |         3.50 |
+| ~clk_main_BUFG    | dbgu1/gen1/E[0]             | BTN_IBUF[0]              |                2 |              7 |         3.50 |
+| ~clk_main_BUFG    | dbgu1/u1/E[0]               | BTN_IBUF[0]              |                4 |              7 |         1.75 |
+|  CLK_IN_IBUF_BUFG |                             | p1/clear                 |                2 |              7 |         3.50 |
+|  LD_OBUF_BUFG[0]  | cpu1/opcode[7]_i_1_n_0      |                          |                2 |              8 |         4.00 |
+|  CLK_IN_IBUF_BUFG |                             | p1/counter_b[10]_i_1_n_0 |                4 |             11 |         2.75 |
+|  clk_main_BUFG    |                             | BTN_IBUF[0]              |               10 |             24 |         2.40 |
+|  CLK_IN_IBUF_BUFG |                             | p1/counter_c[0]_i_1_n_0  |                7 |             27 |         3.86 |
+|  clk_main_BUFG    | d1/btn1_d                   | BTN_IBUF[1]              |                8 |             32 |         4.00 |
+|  clk_main_BUFG    | d2/LD_OBUF[0]               | BTN_IBUF[2]              |                8 |             32 |         4.00 |
++-------------------+-----------------------------+--------------------------+------------------+----------------+--------------+
+
+
