@@ -11,7 +11,8 @@ import java.util.concurrent.locks.LockSupport;
  * Three experiments, results in csv/:
  * runs.csv       - deadlock-free solutions, throughput, waiting time and fairness vs n and scenario,
  * deadlock.csv   - naive solution, time until deadlock,
- * starvation.csv - n = 5 with two greedy philosophers, meals of every philosopher.
+ * starvation.csv - n = 5 with two greedy philosophers, meals of every philosopher,
+ * config.csv     - changed configurations: other number of philosophers, stale waiter limit, extra fork.
  */
 public class Main {
     static final String[] IMPLS = {"both", "waiter", "asym"};
@@ -30,6 +31,7 @@ public class Main {
     static final int REPS = 3;
     static final int DEADLOCK_REPS = 20;
     static final long STARVE_NS = 3000 * MS;
+    static final int CONFIG_DEADLOCK_REPS = 20;
 
     record Result(long timeNs, boolean deadlock, long[] meals, double[] perMeanUs, double[] perMaxUs) {
         long totalMeals() {
@@ -58,14 +60,18 @@ public class Main {
     }
 
     static Result run(String impl, long[] think, long[] eat, long limitNs, long seed) throws InterruptedException {
+        return run(Table.create(impl, think.length), think, eat, limitNs, seed);
+    }
+
+    static Result run(Table table, long[] think, long[] eat, long limitNs, long seed) throws InterruptedException {
         int n = think.length;
-        Table table = Table.create(impl, n);
-        AtomicIntegerArray eating = new AtomicIntegerArray(n);
+        String impl = table.getClass().getSimpleName();
+        AtomicIntegerArray owner = new AtomicIntegerArray(table.forkCount());
         AtomicReference<Throwable> error = new AtomicReference<>();
         CountDownLatch start = new CountDownLatch(1);
         Philosopher[] ph = new Philosopher[n];
         for (int i = 0; i < n; i++) {
-            ph[i] = new Philosopher(i, table, think[i], eat[i], seed * 1_000 + i, eating, start);
+            ph[i] = new Philosopher(i, table, think[i], eat[i], seed * 1_000 + i, owner, start);
             ph[i].setUncaughtExceptionHandler((t, e) -> error.compareAndSet(null, e));
             ph[i].start();
         }
@@ -82,7 +88,10 @@ public class Main {
         long elapsed = System.nanoTime() - t0;
         for (Philosopher p : ph) p.finish();
         if (deadlock) for (Philosopher p : ph) p.interrupt();
-        for (Philosopher p : ph) p.join();
+        for (Philosopher p : ph) {
+            p.join(5_000);
+            if (p.isAlive()) throw new IllegalStateException(impl + ": philosopher did not finish (undetected deadlock)");
+        }
         if (error.get() != null) throw new IllegalStateException(impl, error.get());
 
         long[] meals = new long[n];
@@ -93,6 +102,16 @@ public class Main {
             max[i] = ph[i].waitMaxNs / 1e3;
         }
         return new Result(elapsed, deadlock, meals, mean, max);
+    }
+
+    static void config(PrintWriter w, String experiment, String variant, Scenario s, Result res, int rep) {
+        double sec = res.timeNs() / 1e9;
+        w.printf("%s,%s,%s,%d,%d,%d,%.3f,%.1f,%.3f,%.3f,%.4f,%s%n", experiment, variant, s.name(), res.meals().length, rep,
+                res.deadlock() ? 1 : 0, res.timeNs() / 1e6, res.totalMeals() / sec, res.meanWaitUs(), res.maxWaitUs(),
+                res.jain(), Arrays.stream(res.meals()).mapToObj(Long::toString).reduce((a, b) -> a + ";" + b).orElse(""));
+        System.out.printf("%-12s %-7s %-5s n=%d rep %2d: %s %8.0f meals/s, J=%.3f, meals %s%n", experiment, variant, s.name(),
+                res.meals().length, rep, res.deadlock() ? "DEADLOCK" : "ok      ", res.totalMeals() / sec, res.jain(),
+                Arrays.toString(res.meals()));
     }
 
     static long[] same(int n, long v) {
@@ -150,6 +169,27 @@ public class Main {
                         w.printf("%s,%d,%d,%d,%.3f,%.3f%n", impl, r, i, res.meals()[i], res.perMeanUs()[i], res.perMaxUs()[i]);
                     System.out.printf("starvation %-6s rep %d: meals %s%n", impl, r, Arrays.toString(res.meals()));
                 }
+        }
+        try (PrintWriter w = new PrintWriter(new FileWriter(out + "/config.csv"))) {
+            w.println("experiment,variant,scenario,n,rep,deadlock,time_ms,throughput,mean_wait_us,max_wait_us,jain,meals");
+            Scenario[] contended = {SCENARIOS[1], SCENARIOS[2]};
+            // one philosopher fewer or more than five
+            for (Scenario s : contended)
+                for (int n : new int[]{4, 5, 6})
+                    for (String impl : new String[]{"naive", "both", "waiter", "asym"})
+                        for (int r = 0; r < (impl.equals("naive") ? CONFIG_DEADLOCK_REPS : REPS); r++)
+                            config(w, "philosophers", impl, s, run(impl, same(n, s.thinkNs()), same(n, s.eatNs()), RUN_NS, r), r);
+            // waiter still configured for five philosophers (limit 4)
+            for (Scenario s : contended)
+                for (int n : new int[]{4, 6})
+                    for (int r = 0; r < CONFIG_DEADLOCK_REPS; r++)
+                        config(w, "waiter_limit", "limit4", s,
+                                run(new WaiterTable(n, 4), same(n, s.thinkNs()), same(n, s.eatNs()), RUN_NS, r), r);
+            // extra fork: none, in the middle of the table, in the ring
+            for (Scenario s : new Scenario[]{SCENARIOS[0], SCENARIOS[1], SCENARIOS[2]})
+                for (String impl : new String[]{"naive", "spare", "ring"})
+                    for (int r = 0; r < CONFIG_DEADLOCK_REPS; r++)
+                        config(w, "extra_fork", impl, s, run(impl, same(5, s.thinkNs()), same(5, s.eatNs()), RUN_NS, r), r);
         }
     }
 }

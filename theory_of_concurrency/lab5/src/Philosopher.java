@@ -12,19 +12,19 @@ class Philosopher extends Thread {
     private final Table table;
     private final long thinkNs, eatNs;
     private final SplittableRandom rnd;
-    private final AtomicIntegerArray eating; // shared, used to check mutual exclusion
+    private final AtomicIntegerArray owner; // owner + 1 of every fork, 0 when free; checks mutual exclusion
     private final CountDownLatch start;
     private volatile boolean stop = false;
     long meals = 0, waitSumNs = 0, waitMaxNs = 0;
 
     Philosopher(int id, Table table, long thinkNs, long eatNs, long seed,
-                AtomicIntegerArray eating, CountDownLatch start) {
+                AtomicIntegerArray owner, CountDownLatch start) {
         this.id = id;
         this.table = table;
         this.thinkNs = thinkNs;
         this.eatNs = eatNs;
         this.rnd = new SplittableRandom(seed);
-        this.eating = eating;
+        this.owner = owner;
         this.start = start;
     }
 
@@ -41,7 +41,6 @@ class Philosopher extends Thread {
 
     @Override
     public void run() {
-        int n = table.n;
         try {
             start.await();
             while (!stop) {
@@ -49,14 +48,15 @@ class Philosopher extends Thread {
                 long t0 = System.nanoTime();
                 table.acquire(id);                                // hungry
                 long wait = System.nanoTime() - t0;
-                eating.set(id, 1);
-                if (eating.get((id + 1) % n) == 1 || eating.get((id + n - 1) % n) == 1)
-                    throw new IllegalStateException("neighbours of " + id + " eat at the same time");
+                int[] forks = table.forksOf(id);
+                for (int f : forks)
+                    if (!owner.compareAndSet(f, 0, id + 1))
+                        throw new IllegalStateException("fork " + f + " used by " + id + " and " + (owner.get(f) - 1));
                 meals++;
                 waitSumNs += wait;
                 waitMaxNs = Math.max(waitMaxNs, wait);
                 pause(eatNs);                                     // eating
-                eating.set(id, 0);
+                for (int f : forks) owner.set(f, 0);
                 table.release(id);
             }
         } catch (InterruptedException e) {

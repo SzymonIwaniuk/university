@@ -187,8 +187,13 @@ na prawy. Gdy jest ich $n$, wszystkie widelce są zajęte i żaden filozof nie m
 Ostatni eksperyment sprawdza zagłodzenie: przy $n = 5$ filozofowie F1 i F3 (,,żarłoki'')
 w ogóle nie myślą i jedzą średnio 2 ms, a pozostali myślą 10 ms i jedzą 1 ms. Przebieg trwa 3 s.
 
-W każdym przebiegu filozof po zdobyciu widelców sprawdza, czy żaden z jego sąsiadów nie je.
-Takie zdarzenie przerwałoby pomiary wyjątkiem -- we wszystkich przebiegach nie wystąpiło.
+W każdym przebiegu filozof po zdobyciu widelców zapisuje się w tablicy właścicieli
+jako właściciel każdego z nich (metodą \texttt{compareAndSet}) i sprawdza, czy żaden z tych widelców nie należy już
+do innego jedzącego filozofa. Takie zdarzenie przerwałoby pomiary wyjątkiem -- we wszystkich przebiegach
+nie wystąpiło. Przebieg, w którym filozof nie zakończył pracy w ciągu 5 s po zatrzymaniu
+(niewykryta blokada), również przerwałby pomiary.
+
+Eksperymenty ze zmienioną konfiguracją problemu opisujemy w rozdziale \ref{sec:config}.
 
 \section{Algorytmy}
 Filozof $i$ korzysta z widelca $i$ (lewego) i widelca $(i + 1) \bmod n$ (prawego).
@@ -354,9 +359,25 @@ Klasa \textbf{Table} jest wspólną bazą wszystkich rozwiązań. Metoda \texttt
  */
 abstract class Table {
     final int n;
+    private int[][] pairs;
 
     Table(int n) {
         this.n = n;
+    }
+
+    /** Number of forks on the table, n unless a configuration adds one. */
+    int forkCount() {
+        return n;
+    }
+
+    /** Forks held by philosopher i while eating (used by the mutual exclusion check). */
+    int[] forksOf(int i) {
+        if (pairs == null) {
+            int[][] p = new int[n][];
+            for (int j = 0; j < n; j++) p[j] = new int[]{left(j), right(j)};
+            pairs = p;
+        }
+        return pairs[i];
     }
 
     int left(int i) {
@@ -388,6 +409,8 @@ abstract class Table {
             case "both" -> new BothTable(n);
             case "waiter" -> new WaiterTable(n);
             case "asym" -> new AsymmetricTable(n);
+            case "spare" -> new SpareForkTable(n);
+            case "ring" -> new ExtraForkTable(n);
             default -> throw new IllegalArgumentException(impl);
         };
     }
@@ -464,7 +487,7 @@ class BothTable extends Table {
 }
 \end{lstlisting}
 
-Klasy \textbf{Waiter} i \textbf{WaiterTable} to rozwiązanie c) z lokajem.
+Klasy \textbf{Waiter} i \textbf{WaiterTable} to rozwiązanie c) z lokajem. Drugi konstruktor pozwala ustawić inny limit, co wykorzystujemy w rozdziale \ref{sec:config}.
 
 \begin{lstlisting}[caption={Klasa \textbf{Waiter} (\texttt{src/Waiter.java})}]
 /** Waiter (lokaj) lets at most limit philosophers try to take forks at the same time. */
@@ -489,22 +512,34 @@ class Waiter {
 \end{lstlisting}
 
 \begin{lstlisting}[caption={Klasa \textbf{WaiterTable} (\texttt{src/WaiterTable.java})}]
-/** c) Naive fork order guarded by a waiter that admits at most n - 1 philosophers. */
+import java.util.concurrent.atomic.AtomicInteger;
+
+/**
+ * c) Naive fork order guarded by a waiter that admits at most n - 1 philosophers.
+ * A different limit models a waiter configured for another number of philosophers.
+ */
 class WaiterTable extends Table {
     private final Fork[] forks;
     private final Waiter waiter;
+    private final AtomicInteger holdingOne = new AtomicInteger();
 
     WaiterTable(int n) {
+        this(n, n - 1);
+    }
+
+    WaiterTable(int n, int limit) {
         super(n);
         forks = forks(n);
-        waiter = new Waiter(n - 1);
+        waiter = new Waiter(limit);
     }
 
     @Override
     void acquire(int i) throws InterruptedException {
         waiter.enter();
         forks[left(i)].take();
+        holdingOne.incrementAndGet();
         forks[right(i)].take();
+        holdingOne.decrementAndGet();
     }
 
     @Override
@@ -512,6 +547,12 @@ class WaiterTable extends Table {
         forks[right(i)].put();
         forks[left(i)].put();
         waiter.leave();
+    }
+
+    /** Possible only with limit >= n: everybody holds the left fork. */
+    @Override
+    boolean deadlocked() {
+        return holdingOne.get() == n;
     }
 }
 \end{lstlisting}
@@ -545,7 +586,94 @@ class AsymmetricTable extends Table {
 }
 \end{lstlisting}
 
-Klasa \textbf{Philosopher} to wątek filozofa ze szkieletu (\texttt{Filozof}) rozszerzony o pomiary i sprawdzenie, czy sąsiedzi nie jedzą jednocześnie.
+Klasy \textbf{SpareForkTable} i \textbf{ExtraForkTable} to konfiguracje z dodatkowym widelcem z rozdziału \ref{sec:config}.
+
+\begin{lstlisting}[caption={Klasa \textbf{SpareForkTable} (\texttt{src/SpareForkTable.java})}]
+/**
+ * Extra fork in the middle of the table: naive order (left fork, then right fork), but a philosopher
+ * whose right fork is taken may use the spare fork instead. n philosophers hold at most n forks
+ * while waiting, there are n + 1, so somebody always gets two and the cycle cannot close.
+ * One monitor for the whole table, because a philosopher waits for one of two forks.
+ */
+class SpareForkTable extends Table {
+    private final boolean[] taken; // ring forks 0..n-1, spare fork n
+    private final int[][] held;    // forks currently held by every philosopher
+
+    SpareForkTable(int n) {
+        super(n);
+        taken = new boolean[n + 1];
+        held = new int[n][2];
+    }
+
+    @Override
+    int forkCount() {
+        return n + 1;
+    }
+
+    @Override
+    int[] forksOf(int i) {
+        return held[i];
+    }
+
+    @Override
+    synchronized void acquire(int i) throws InterruptedException {
+        while (taken[left(i)]) wait();
+        taken[left(i)] = true;
+        while (taken[right(i)] && taken[n]) wait();
+        int second = taken[right(i)] ? n : right(i);
+        taken[second] = true;
+        held[i][0] = left(i);
+        held[i][1] = second;
+    }
+
+    @Override
+    synchronized void release(int i) {
+        taken[held[i][1]] = false;
+        taken[held[i][0]] = false;
+        notifyAll();
+    }
+}
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Klasa \textbf{ExtraForkTable} (\texttt{src/ExtraForkTable.java})}]
+/**
+ * Extra fork in the ring: n philosophers and n + 1 forks, philosopher i uses forks i and i + 1,
+ * so philosophers n - 1 and 0 do not share a fork. Naive order (left, then right) but the waiting
+ * graph is a path, not a cycle, so there is no deadlock.
+ */
+class ExtraForkTable extends Table {
+    private final Fork[] forks;
+
+    ExtraForkTable(int n) {
+        super(n);
+        forks = forks(n + 1);
+    }
+
+    @Override
+    int forkCount() {
+        return n + 1;
+    }
+
+    @Override
+    int right(int i) {
+        return i + 1;
+    }
+
+    @Override
+    void acquire(int i) throws InterruptedException {
+        forks[left(i)].take();
+        forks[right(i)].take();
+    }
+
+    @Override
+    void release(int i) {
+        forks[right(i)].put();
+        forks[left(i)].put();
+    }
+}
+\end{lstlisting}
+
+Klasa \textbf{Philosopher} to wątek filozofa ze szkieletu (\texttt{Filozof}) rozszerzony o pomiary i sprawdzenie, czy żaden widelec nie jest używany przez dwóch filozofów jednocześnie.
 
 \begin{lstlisting}[caption={Klasa \textbf{Philosopher} (\texttt{src/Philosopher.java})}]
 import java.util.SplittableRandom;
@@ -562,19 +690,19 @@ class Philosopher extends Thread {
     private final Table table;
     private final long thinkNs, eatNs;
     private final SplittableRandom rnd;
-    private final AtomicIntegerArray eating; // shared, used to check mutual exclusion
+    private final AtomicIntegerArray owner; // owner + 1 of every fork, 0 when free; checks mutual exclusion
     private final CountDownLatch start;
     private volatile boolean stop = false;
     long meals = 0, waitSumNs = 0, waitMaxNs = 0;
 
     Philosopher(int id, Table table, long thinkNs, long eatNs, long seed,
-                AtomicIntegerArray eating, CountDownLatch start) {
+                AtomicIntegerArray owner, CountDownLatch start) {
         this.id = id;
         this.table = table;
         this.thinkNs = thinkNs;
         this.eatNs = eatNs;
         this.rnd = new SplittableRandom(seed);
-        this.eating = eating;
+        this.owner = owner;
         this.start = start;
     }
 
@@ -591,7 +719,6 @@ class Philosopher extends Thread {
 
     @Override
     public void run() {
-        int n = table.n;
         try {
             start.await();
             while (!stop) {
@@ -599,14 +726,15 @@ class Philosopher extends Thread {
                 long t0 = System.nanoTime();
                 table.acquire(id);                                // hungry
                 long wait = System.nanoTime() - t0;
-                eating.set(id, 1);
-                if (eating.get((id + 1) % n) == 1 || eating.get((id + n - 1) % n) == 1)
-                    throw new IllegalStateException("neighbours of " + id + " eat at the same time");
+                int[] forks = table.forksOf(id);
+                for (int f : forks)
+                    if (!owner.compareAndSet(f, 0, id + 1))
+                        throw new IllegalStateException("fork " + f + " used by " + id + " and " + (owner.get(f) - 1));
                 meals++;
                 waitSumNs += wait;
                 waitMaxNs = Math.max(waitMaxNs, wait);
                 pause(eatNs);                                     // eating
-                eating.set(id, 0);
+                for (int f : forks) owner.set(f, 0);
                 table.release(id);
             }
         } catch (InterruptedException e) {
@@ -616,7 +744,7 @@ class Philosopher extends Thread {
 }
 \end{lstlisting}
 
-Klasa \textbf{Main} wykonuje wszystkie trzy eksperymenty i zapisuje wyniki do plików CSV, z których skrypt w Pythonie rysuje wykresy.
+Klasa \textbf{Main} wykonuje wszystkie eksperymenty i zapisuje wyniki do plików CSV, z których skrypt w Pythonie rysuje wykresy.
 
 \begin{lstlisting}[caption={Klasa \textbf{Main} (\texttt{src/Main.java})}]
 import java.io.FileWriter;
@@ -632,7 +760,8 @@ import java.util.concurrent.locks.LockSupport;
  * Three experiments, results in csv/:
  * runs.csv       - deadlock-free solutions, throughput, waiting time and fairness vs n and scenario,
  * deadlock.csv   - naive solution, time until deadlock,
- * starvation.csv - n = 5 with two greedy philosophers, meals of every philosopher.
+ * starvation.csv - n = 5 with two greedy philosophers, meals of every philosopher,
+ * config.csv     - changed configurations: other number of philosophers, stale waiter limit, extra fork.
  */
 public class Main {
     static final String[] IMPLS = {"both", "waiter", "asym"};
@@ -651,6 +780,7 @@ public class Main {
     static final int REPS = 3;
     static final int DEADLOCK_REPS = 20;
     static final long STARVE_NS = 3000 * MS;
+    static final int CONFIG_DEADLOCK_REPS = 20;
 
     record Result(long timeNs, boolean deadlock, long[] meals, double[] perMeanUs, double[] perMaxUs) {
         long totalMeals() {
@@ -679,14 +809,18 @@ public class Main {
     }
 
     static Result run(String impl, long[] think, long[] eat, long limitNs, long seed) throws InterruptedException {
+        return run(Table.create(impl, think.length), think, eat, limitNs, seed);
+    }
+
+    static Result run(Table table, long[] think, long[] eat, long limitNs, long seed) throws InterruptedException {
         int n = think.length;
-        Table table = Table.create(impl, n);
-        AtomicIntegerArray eating = new AtomicIntegerArray(n);
+        String impl = table.getClass().getSimpleName();
+        AtomicIntegerArray owner = new AtomicIntegerArray(table.forkCount());
         AtomicReference<Throwable> error = new AtomicReference<>();
         CountDownLatch start = new CountDownLatch(1);
         Philosopher[] ph = new Philosopher[n];
         for (int i = 0; i < n; i++) {
-            ph[i] = new Philosopher(i, table, think[i], eat[i], seed * 1_000 + i, eating, start);
+            ph[i] = new Philosopher(i, table, think[i], eat[i], seed * 1_000 + i, owner, start);
             ph[i].setUncaughtExceptionHandler((t, e) -> error.compareAndSet(null, e));
             ph[i].start();
         }
@@ -703,7 +837,10 @@ public class Main {
         long elapsed = System.nanoTime() - t0;
         for (Philosopher p : ph) p.finish();
         if (deadlock) for (Philosopher p : ph) p.interrupt();
-        for (Philosopher p : ph) p.join();
+        for (Philosopher p : ph) {
+            p.join(5_000);
+            if (p.isAlive()) throw new IllegalStateException(impl + ": philosopher did not finish (undetected deadlock)");
+        }
         if (error.get() != null) throw new IllegalStateException(impl, error.get());
 
         long[] meals = new long[n];
@@ -714,6 +851,16 @@ public class Main {
             max[i] = ph[i].waitMaxNs / 1e3;
         }
         return new Result(elapsed, deadlock, meals, mean, max);
+    }
+
+    static void config(PrintWriter w, String experiment, String variant, Scenario s, Result res, int rep) {
+        double sec = res.timeNs() / 1e9;
+        w.printf("%s,%s,%s,%d,%d,%d,%.3f,%.1f,%.3f,%.3f,%.4f,%s%n", experiment, variant, s.name(), res.meals().length, rep,
+                res.deadlock() ? 1 : 0, res.timeNs() / 1e6, res.totalMeals() / sec, res.meanWaitUs(), res.maxWaitUs(),
+                res.jain(), Arrays.stream(res.meals()).mapToObj(Long::toString).reduce((a, b) -> a + ";" + b).orElse(""));
+        System.out.printf("%-12s %-7s %-5s n=%d rep %2d: %s %8.0f meals/s, J=%.3f, meals %s%n", experiment, variant, s.name(),
+                res.meals().length, rep, res.deadlock() ? "DEADLOCK" : "ok      ", res.totalMeals() / sec, res.jain(),
+                Arrays.toString(res.meals()));
     }
 
     static long[] same(int n, long v) {
@@ -772,6 +919,27 @@ public class Main {
                     System.out.printf("starvation %-6s rep %d: meals %s%n", impl, r, Arrays.toString(res.meals()));
                 }
         }
+        try (PrintWriter w = new PrintWriter(new FileWriter(out + "/config.csv"))) {
+            w.println("experiment,variant,scenario,n,rep,deadlock,time_ms,throughput,mean_wait_us,max_wait_us,jain,meals");
+            Scenario[] contended = {SCENARIOS[1], SCENARIOS[2]};
+            // one philosopher fewer or more than five
+            for (Scenario s : contended)
+                for (int n : new int[]{4, 5, 6})
+                    for (String impl : new String[]{"naive", "both", "waiter", "asym"})
+                        for (int r = 0; r < (impl.equals("naive") ? CONFIG_DEADLOCK_REPS : REPS); r++)
+                            config(w, "philosophers", impl, s, run(impl, same(n, s.thinkNs()), same(n, s.eatNs()), RUN_NS, r), r);
+            // waiter still configured for five philosophers (limit 4)
+            for (Scenario s : contended)
+                for (int n : new int[]{4, 6})
+                    for (int r = 0; r < CONFIG_DEADLOCK_REPS; r++)
+                        config(w, "waiter_limit", "limit4", s,
+                                run(new WaiterTable(n, 4), same(n, s.thinkNs()), same(n, s.eatNs()), RUN_NS, r), r);
+            // extra fork: none, in the middle of the table, in the ring
+            for (Scenario s : new Scenario[]{SCENARIOS[0], SCENARIOS[1], SCENARIOS[2]})
+                for (String impl : new String[]{"naive", "spare", "ring"})
+                    for (int r = 0; r < CONFIG_DEADLOCK_REPS; r++)
+                        config(w, "extra_fork", impl, s, run(impl, same(5, s.thinkNs()), same(5, s.eatNs()), RUN_NS, r), r);
+        }
     }
 }
 \end{lstlisting}
@@ -789,11 +957,15 @@ w których blokada wystąpiła w ciągu 1 s.
 \end{figure}
 
 Bez myślenia i jedzenia blokada wystąpiła w każdym przebiegu, a mediana czasu do blokady
-wynosi 0,14 ms dla $n = 5$ i 0,41 ms dla $n = 50$ (filozofowie zdążyli zjeść łącznie
-odpowiednio 98 i 1577 razy). Przy ciągle głodnych filozofach i jedzeniu 1 ms blokada wystąpiła
-w 95\% przebiegów dla $n = 5$ (mediana 186 ms), ale tylko w 20\% dla $n = 20$ i 10\% dla $n = 50$.
-Gdy filozofowie myślą 1 ms, blokada w ciągu sekundy zdarzała się rzadko (10\% dla $n = 5$),
-a przy 10 ms myślenia nie wystąpiła ani razu.
+wynosi 0,13 ms dla $n = 5$ i 0,41 ms dla $n = 50$ (filozofowie zdążyli zjeść łącznie
+odpowiednio 133 i 1706 razy). Przy ciągle głodnych filozofach i jedzeniu 1 ms blokada wystąpiła
+w 30\% przebiegów dla $n = 5$ (mediana 411 ms), w 10\% dla $n = 10$, 5\% dla $n = 20$,
+a dla $n = 50$ ani razu. Gdy filozofowie myślą 1 ms lub 10 ms, w tym eksperymencie blokada
+nie wystąpiła w ciągu sekundy ani razu. Nie oznacza to jednak, że jest niemożliwa:
+w eksperymencie z rozdziału \ref{sec:config} przy myśleniu 1 ms wystąpiła w 5\% przebiegów dla $n = 4$
+i w 10\% dla $n = 6$. Wyniki z poprzedniego uruchomienia całych pomiarów różniły się wyraźnie
+(np. 95\% zamiast 30\% dla scenariusza 0/1 i $n = 5$), więc prawdopodobieństwo blokady w krótkim
+przebiegu silnie zależy od przypadkowego przeplotu wątków.
 
 Blokada wymaga, żeby wszyscy filozofowie jednocześnie trzymali lewy widelec.
 Im krótsze myślenie i im mniej filozofów, tym większe szanse na takie ułożenie,
@@ -818,27 +990,27 @@ Nie jest jednak poprawne -- blokada jest tylko kwestią czasu.
         \hline
         \multirow{2}{*}{\textbf{Scenariusz}} & \multirow{2}{*}{\textbf{Rozwiązanie}} & \multicolumn{3}{c|}{$n = 5$} & \multicolumn{3}{c|}{$n = 100$} \\ \cline{3-8}
         & & posiłki/s & czekanie [\textmu s] & $J$ & posiłki/s & czekanie [\textmu s] & $J$ \\ \hline
-        \multirow{3}{*}{0/0} & b) oba naraz & \num{6163329} & \num{0.6} & \num{1.00} & \num{4630063} & \num{16.1} & \num{0.98} \\
-         & c) lokaj & \num{3569841} & \num{1.1} & \num{1.00} & \num{3522370} & \num{15.0} & \num{0.99} \\
-         & asymetryczne & \num{6740508} & \num{0.6} & \num{0.48} & \num{7409489} & \num{13.4} & \num{0.02} \\ \hline
-        \multirow{3}{*}{0/1} & b) oba naraz & \num{1668} & \num{1803.4} & \num{0.77} & \num{42099} & \num{1213.0} & \num{0.50} \\
-         & c) lokaj & \num{853} & \num{4611.2} & \num{0.32} & \num{1555} & \num{67170.1} & \num{0.04} \\
-         & asymetryczne & \num{906} & \num{4264.8} & \num{0.34} & \num{4147} & \num{24532.0} & \num{0.14} \\ \hline
-        \multirow{3}{*}{1/1} & b) oba naraz & \num{1499} & \num{941.5} & \num{1.00} & \num{30188} & \num{985.4} & \num{1.00} \\
-         & c) lokaj & \num{1258} & \num{1578.8} & \num{1.00} & \num{20619} & \num{2528.9} & \num{1.00} \\
-         & asymetryczne & \num{1409} & \num{1185.9} & \num{0.99} & \num{21616} & \num{2311.9} & \num{0.99} \\ \hline
-        \multirow{3}{*}{10/1} & b) oba naraz & \num{400} & \num{194.0} & \num{1.00} & \num{7695} & \num{145.9} & \num{1.00} \\
-         & c) lokaj & \num{395} & \num{221.7} & \num{1.00} & \num{7688} & \num{168.3} & \num{1.00} \\
-         & asymetryczne & \num{396} & \num{194.4} & \num{1.00} & \num{7688} & \num{160.8} & \num{1.00} \\ \hline
+        \multirow{3}{*}{0/0} & b) oba naraz & \num{6383726} & \num{0.6} & \num{1.00} & \num{4808533} & \num{15.4} & \num{0.98} \\
+         & c) lokaj & \num{3415848} & \num{1.2} & \num{1.00} & \num{3023800} & \num{24.3} & \num{0.99} \\
+         & asymetryczne & \num{6573349} & \num{0.6} & \num{0.51} & \num{7029457} & \num{14.1} & \num{0.02} \\ \hline
+        \multirow{3}{*}{0/1} & b) oba naraz & \num{1645} & \num{1825.2} & \num{0.78} & \num{42067} & \num{1213.9} & \num{0.50} \\
+         & c) lokaj & \num{892} & \num{4404.4} & \num{0.23} & \num{1491} & \num{70173.4} & \num{0.05} \\
+         & asymetryczne & \num{1118} & \num{3291.9} & \num{0.35} & \num{6515} & \num{15217.8} & \num{0.18} \\ \hline
+        \multirow{3}{*}{1/1} & b) oba naraz & \num{1512} & \num{935.8} & \num{1.00} & \num{30339} & \num{975.1} & \num{1.00} \\
+         & c) lokaj & \num{1309} & \num{1440.5} & \num{1.00} & \num{20539} & \num{2552.1} & \num{1.00} \\
+         & asymetryczne & \num{1401} & \num{1163.6} & \num{0.99} & \num{21768} & \num{2286.7} & \num{0.99} \\ \hline
+        \multirow{3}{*}{10/1} & b) oba naraz & \num{388} & \num{230.0} & \num{1.00} & \num{7691} & \num{150.5} & \num{1.00} \\
+         & c) lokaj & \num{393} & \num{214.9} & \num{1.00} & \num{7701} & \num{150.5} & \num{1.00} \\
+         & asymetryczne & \num{390} & \num{239.2} & \num{1.00} & \num{7687} & \num{163.0} & \num{1.00} \\ \hline
     \end{tabular}
     \caption{Przepustowość, średni czas oczekiwania na widelce i indeks Jaina $J$}
 \end{table}
 
-Bez myślenia i jedzenia (0/0) najszybsze jest rozwiązanie asymetryczne: 6,7--7,4 mln posiłków na
+Bez myślenia i jedzenia (0/0) najszybsze jest rozwiązanie asymetryczne: 6,6--7,3 mln posiłków na
 sekundę, bo każdy widelec synchronizuje tylko dwóch sąsiadów i nie ma wspólnego monitora.
-Rozwiązanie b) jest wolniejsze (4,6--6,2 mln), a dla $n \ge 10$ wyraźnie traci, bo każdy posiłek
+Rozwiązanie b) jest wolniejsze (4,5--6,4 mln), a dla $n \ge 10$ wyraźnie traci, bo każdy posiłek
 przechodzi przez jeden monitor stołu, a \texttt{notifyAll()} budzi wszystkich czekających.
-Lokaj jest najwolniejszy (3,5 mln) -- każdy posiłek to dwa wejścia do wspólnego monitora lokaja
+Lokaj jest najwolniejszy (3,0--3,4 mln) -- każdy posiłek to dwa wejścia do wspólnego monitora lokaja
 i cztery do monitorów widelców.
 
 Przy jedzeniu 1 ms koszt synchronizacji jest pomijalny, a przepustowość zależy od tego,
@@ -851,7 +1023,7 @@ mimo że sam jeszcze nie je, i powstają łańcuchy oczekujących filozofów.
 
 Największe różnice są w scenariuszu 0/1 (ciągle głodni filozofowie). Rozwiązanie b) osiąga
 dla $n = 100$ 42 tys. posiłków na sekundę, czyli blisko maksimum $\frac{n}{2}$ jedzących naraz
-($50$ tys.). Rozwiązanie asymetryczne osiąga 4,1 tys., a lokaj tylko 1,6 tys. posiłków na sekundę --
+($50$ tys.). Rozwiązanie asymetryczne osiąga 6,5 tys., a lokaj tylko 1,5 tys. posiłków na sekundę --
 mniej niż 2 filozofów je jednocześnie. Filozof, który odłożył widelce, natychmiast próbuje
 podnieść je ponownie, więc niemal każdy widelec jest zajęty przez kogoś, kto czeka na drugi,
 i tworzą się długie łańcuchy oczekiwania. Przy lokaju dodatkowo kolejność wpuszczania do stołu
@@ -873,7 +1045,7 @@ nie ma związku z dostępnymi widelcami.
 \end{figure}
 
 Średnie czasy odpowiadają przepustowości: przy małej rywalizacji (10/1) filozof czeka
-średnio 150--220 \textmu s, a w scenariuszu 0/1 dla $n = 100$ od 1,2 ms (b) do 67 ms (lokaj).
+średnio 150--240 \textmu s, a w scenariuszu 0/1 dla $n = 100$ od 1,2 ms (b) do 70 ms (lokaj).
 Maksymalny czas oczekiwania w scenariuszu 0/1 dla wszystkich rozwiązań wynosi około 1 s,
 czyli cały przebieg: niektórzy filozofowie doczekali się widelców dopiero wtedy, gdy
 pozostali kończyli pracę. Bez myślenia i jedzenia to samo dotyczy rozwiązania asymetrycznego
@@ -892,7 +1064,7 @@ odpowiada sytuacji, w której je tylko jeden filozof.
 Gdy filozofowie myślą (1/1 i 10/1), wszystkie rozwiązania są sprawiedliwe ($J \ge 0{,}99$).
 Gdy nie myślą (0/1), wszystkie głodzą filozofów. W rozwiązaniu b) dla $n \ge 10$ $J \approx 0{,}5$:
 je co drugi filozof, a jego sąsiedzi prawie wcale. W rozwiązaniu z lokajem i asymetrycznym $J$ spada dla $n = 100$
-do 0,04 i 0,14, czyli blisko $\frac{1}{n}$. Bez myślenia i jedzenia (0/0) b) i lokaj są sprawiedliwe,
+do 0,05 i 0,18, czyli blisko $\frac{1}{n}$. Bez myślenia i jedzenia (0/0) b) i lokaj są sprawiedliwe,
 a rozwiązanie asymetryczne nie (dla $n = 100$ $J = 0{,}02$).
 
 Przyczyna jest ta sama co w laboratorium 4: monitor Javy nie gwarantuje kolejności wejścia.
@@ -909,14 +1081,190 @@ sąsiadowi czas na zabranie widelca, dlatego w scenariuszach 1/1 i 10/1 problem 
     \caption{Liczba posiłków i najdłuższe oczekiwanie, F1 i F3 nie myślą, $n = 5$, 3 s}
 \end{figure}
 
-W rozwiązaniu b) żarłoki zjadły średnio 1233 i 1224 razy, a F0, F2 i F4 tylko 2, 1 i 2 razy
+W rozwiązaniu b) żarłoki zjadły średnio 1198 i 1174 razy, a F0, F2 i F4 tylko 2, 1 i 4 razy
 w ciągu 3 s. Najdłuższe oczekiwanie F2 wyniosło 3{,}00 s, czyli praktycznie cały przebieg.
 To dokładnie scenariusz zagłodzenia z rozdziału 3.2: F1 i F3 nie są sąsiadami, więc mogą jeść
 jednocześnie i na zmianę, a F2 potrzebuje chwili, w której nie je żaden z nich.
 W rozwiązaniu z lokajem i asymetrycznym F0, F2 i F4 również jedzą tylko kilka razy,
-ale żarłoki też tracą (472--976 posiłków), bo czekają na widelce trzymane przez sąsiadów,
-którzy czekają na drugi widelec. Żadne z badanych rozwiązań nie chroni przed zagłodzeniem,
+a F1 zjada wyraźnie mniej niż F3 (683 i 409 razy wobec ponad 1200): F2 trzyma widelec 2,
+czekając na widelec 3 zajęty przez F3, więc blokuje też F1. Żadne z badanych rozwiązań nie chroni przed zagłodzeniem,
 gdy niektórzy filozofowie nie dają innym szansy.
+
+\section{Zmiany w konfiguracji problemu}
+\label{sec:config}
+Rozwiązania z rozdziału 3 są poprawne przy założeniach klasycznego problemu: $n$ filozofów przy okrągłym
+stole, $n$ widelców, każdy filozof potrzebuje dokładnie dwóch sąsiednich widelców, wszyscy działają
+zgodnie z protokołem i nikt nie odchodzi od stołu. W tym rozdziale sprawdzamy, co się dzieje,
+gdy któreś z tych założeń się zmieni: pojawi się dodatkowy filozof albo dodatkowy widelec,
+lokaj zostanie skonfigurowany dla innej liczby filozofów itd. Interesuje nas, czy zmiana zwiększa
+ryzyko blokady, zagłodzenia oraz jak wpływa na wydajność.
+
+Pomiary wykonujemy tak jak w rozdziale 2.1, w scenariuszach 0/1 i 1/1 (a dla dodatkowego widelca
+także 0/0). Rozwiązania, w których może dojść do blokady, uruchamiamy 20 razy na konfigurację,
+pozostałe 3 razy.
+
+\subsection{Dodatkowy (lub brakujący) filozof}
+Zmiana liczby filozofów z 5 na 4 lub 6 oznacza też zmianę liczby widelców, bo każdy
+nowy filozof przynosi swój widelec. Teoretycznie:
+\begin{itemize}
+    \item \textbf{a) trywialne} -- cykl oczekiwania istnieje dla każdego $n \ge 2$, więc blokada
+          pozostaje możliwa. Prawdopodobieństwo blokady maleje z $n$, bo wszyscy filozofowie muszą
+          jednocześnie trzymać lewy widelec, ale nigdy nie spada do zera.
+    \item \textbf{b) oba widelce naraz} -- dalej bez blokady. Dla parzystego $n$ stół można podzielić
+          na filozofów parzystych i nieparzystych. Jeżeli jedna grupa je na zmianę z małymi przerwami,
+          druga może być zagłodzona w całości. Dla nieparzystego $n$ taki podział nie istnieje.
+    \item \textbf{c) lokaj} -- poprawny dla każdego $n$, ale tylko wtedy, gdy limit lokaja to $n - 1$
+          (rozdział \ref{sec:waiter-limit}).
+    \item \textbf{asymetryczne} -- poprawne dla każdego $n$, bo porządek widelców jest globalny.
+          Nowy widelec dostaje kolejny numer i nie trzeba zmieniać pozostałych filozofów.
+\end{itemize}
+Liczba filozofów jedzących jednocześnie wynosi co najwyżej $\lfloor n/2 \rfloor$: dla $n = 4$ i $n = 5$
+są to dwaj filozofowie, a dla $n = 6$ trzej. Dodanie piątego filozofa do czterech nie zwiększa więc
+przepustowości, a dodanie szóstego do pięciu ją zwiększa.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{img/config_philosophers.png}
+    \caption{Rozwiązanie trywialne i przepustowość na filozofa dla $n \in \{4, 5, 6\}$}
+\end{figure}
+
+Pomiary to potwierdzają. W rozwiązaniu trywialnym w scenariuszu 0/1 blokada wystąpiła w 30\%,
+25\% i 5\% przebiegów dla $n = 4, 5, 6$, a w scenariuszu 1/1 w 5\%, 0\% i 10\% przebiegów.
+Większa liczba filozofów zmniejsza więc ryzyko blokady, ale go nie usuwa.
+W rozwiązaniu b) w scenariuszu 0/1 przepustowość wynosi 1629, 1639 i 2489 posiłków na sekundę dla
+$n = 4, 5, 6$, czyli szósty filozof zwiększa ją o 52\%, a piąty nie zmienia jej wcale.
+Na wykresie widać to jako spadek liczby posiłków na filozofa dla $n = 5$
+($\lfloor n/2 \rfloor / n$ wynosi $0{,}5$, $0{,}4$ i $0{,}5$). W scenariuszu 1/1 rywalizacja jest mała
+i liczba posiłków na filozofa prawie nie zależy od $n$.
+
+Parzystość ma też wpływ na zagłodzenie. W rozwiązaniu b) dla $n = 6$ w scenariuszu 0/1 filozofowie
+F1, F3 i F5 zjedli 724, 826 i 751 razy, a F2 i F4 tylko raz -- dokładnie zagłodzenie jednej z dwóch
+grup. Dla $n = 4$ jest podobnie (269, 542, 283 i 538 posiłków), a dla $n = 5$ podział jest mniej wyraźny
+(od 135 do 508 posiłków).
+
+\subsection{Lokaj skonfigurowany dla innej liczby filozofów}
+\label{sec:waiter-limit}
+Lokaj ma limit wpisany na stałe dla pięciu filozofów (4). Jeżeli liczba filozofów się zmieni,
+a limit nie, możliwe są dwa przypadki:
+\begin{itemize}
+    \item \textbf{mniej filozofów ($n = 4$, limit 4)} -- limit nie jest mniejszy od $n$, więc lokaj
+          wpuszcza wszystkich i rozwiązanie staje się trywialne, z możliwą blokadą.
+          W pomiarach blokada wystąpiła w 5\% przebiegów zarówno w scenariuszu 0/1, jak i 1/1,
+          a bez myślenia i jedzenia po ułamku milisekundy.
+    \item \textbf{więcej filozofów ($n = 6$, limit 4)} -- rozwiązanie pozostaje poprawne, bo przy stole
+          jest mniej niż $n$ filozofów, ale lokaj niepotrzebnie zatrzymuje dwóch filozofów zamiast jednego.
+          W scenariuszu 0/1 przepustowość spadła z 1526 do 1153 posiłków na sekundę (o 24\%),
+          a indeks Jaina z 0,37 do 0,34. W scenariuszu 1/1 różnica była w granicach błędu (1552 wobec 1473).
+\end{itemize}
+Zbyt duży limit jest więc błędem poprawności, a zbyt mały kosztuje wydajność.
+Limit należy wyznaczać z aktualnej liczby filozofów, a przy filozofach dosiadających się
+w trakcie działania zmieniać go razem z nią pod tym samym monitorem.
+
+\subsection{Dodatkowy widelec}
+Dodatkowy widelec można położyć w dwóch miejscach, a skutki są różne.
+
+\textbf{Zapasowy widelec na środku stołu.} Filozof podnosi lewy widelec, a jeżeli prawy jest zajęty,
+może użyć zapasowego (klasa \textbf{SpareForkTable}). Ponieważ filozof może czekać na jeden z dwóch
+widelców, cały stół jest jednym monitorem.
+
+\begin{algorytm}[H]
+\setstretch{1.4}
+\begin{algorithmic}[1]
+    \Procedure{acquire}{$i$} \Comment{\texttt{synchronized} na całym stole}
+        \While{$\textit{zajęty}[i]$}
+            \State \textsc{wait}()
+        \EndWhile
+        \State $\textit{zajęty}[i] \gets \texttt{true}$
+        \While{$\textit{zajęty}[(i + 1) \bmod n] \land \textit{zajęty}[\textit{zapasowy}]$}
+            \State \textsc{wait}()
+        \EndWhile
+        \State $d \gets$ \textbf{jeżeli} wolny $(i + 1) \bmod n$ \textbf{to} $(i + 1) \bmod n$ \textbf{inaczej} \textit{zapasowy}
+        \State $\textit{zajęty}[d] \gets \texttt{true}$, \ zapamiętaj $d$
+    \EndProcedure
+    \Procedure{release}{$i$} \Comment{\texttt{synchronized} na całym stole}
+        \State $\textit{zajęty}[d] \gets \texttt{false}$, \ $\textit{zajęty}[i] \gets \texttt{false}$, \ \textsc{notifyAll}()
+    \EndProcedure
+\end{algorithmic}
+\caption{Rozwiązanie trywialne z zapasowym widelcem}
+\end{algorytm}
+
+Filozofów jest $n$, a widelców $n + 1$, więc z zasady szufladkowej któryś filozof zawsze zdobędzie dwa
+widelce i blokada jest niemożliwa -- to ten sam argument co dla lokaja, tylko zamiast odebrać
+miejsce przy stole, dodajemy zasób. Zapasowy widelec zwiększa też liczbę jedzących naraz:
+dla $n = 5$ mogą jeść trzej filozofowie (np. F0, F2 i F4 z zapasowym).
+Ceną jest wspólny monitor i \textsc{notifyAll}, a zapasowy widelec jest zasobem, o który rywalizują wszyscy.
+
+\textbf{Dodatkowy widelec w pierścieniu.} Widelców jest $n + 1$, a filozof $i$ używa widelców $i$ i $i + 1$
+(klasa \textbf{ExtraForkTable}). Filozofowie F$(n-1)$ i F0 nie mają już wspólnego widelca, więc stół
+zamienia się w łańcuch. Graf oczekiwania nie może utworzyć cyklu i nawet rozwiązanie trywialne
+nie zakleszcza się. Filozofowie nie są jednak już równoprawni: F0 i F$(n-1)$ mają jednego sąsiada, z którym
+rywalizują, a pozostali dwóch. Dla $n = 5$ filozofowie F0, F2 i F4 mogą jeść jednocześnie
+i trwale zagłodzić F1 i F3.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{img/config_extra_fork.png}
+    \caption{Dodatkowy widelec, $n = 5$: blokada, indeks Jaina i liczba posiłków w scenariuszu 0/1}
+\end{figure}
+
+W pomiarach żadna z konfiguracji z dodatkowym widelcem nie zakleszczyła się, podczas gdy rozwiązanie
+trywialne zablokowało się w 100\%, 30\% i 5\% przebiegów w scenariuszach 0/0, 0/1 i 1/1.
+Zapasowy widelec dał bez myślenia i jedzenia 6,5 mln posiłków na sekundę przy $J = 1{,}00$,
+a w scenariuszu 1/1 1657 posiłków na sekundę, więcej niż najlepsze rozwiązanie z rozdziału 5 dla
+$n = 5$ (b), 1512) -- dzięki trzem jedzącym zamiast dwóch. Widelec w pierścieniu dał w scenariuszu 0/1 najwyższą
+przepustowość (2479 posiłków na sekundę), ale kosztem zagłodzenia: F0, F2 i F4 zjedli 603, 637 i 665
+razy, a F1 i F3 tylko 66 i 166 razy. Bez myślenia i jedzenia liczba posiłków rośnie wzdłuż łańcucha
+od 0,18 mln (F0) do 4,0 mln (F4, który ma własny widelec 5), a $J = 0{,}49$.
+
+\subsection{Inne zmiany konfiguracji}
+Pozostałe zmiany omawiamy bez pomiarów.
+\begin{itemize}
+    \item \textbf{Brakujący widelec} (np. zgubiony lub uszkodzony) -- dwaj filozofowie, którzy go potrzebują,
+          nigdy nie zjedzą, czyli są zagłodzeni przez samą konfigurację. W rozwiązaniach a), c)
+          i asymetrycznym jest gorzej: filozof, który podniósł swój drugi widelec i czeka na brakujący,
+          trzyma go w nieskończoność, więc głoduje też jego sąsiad, a dalej cały łańcuch.
+          W rozwiązaniu b) filozof nie trzyma widelców podczas czekania, więc problem pozostaje lokalny.
+    \item \textbf{Filozof, który nie odkłada widelców} (awaria wątku w trakcie jedzenia) -- skutek jak wyżej.
+          Monitory Javy nie mają limitu czasu oczekiwania, więc bez \texttt{wait(timeout)} lub \texttt{tryLock}
+          system nie może z tego wybrnąć.
+    \item \textbf{Filozof potrzebujący więcej niż dwóch widelców} -- warunek blokady dotyczy dowolnego
+          podzbioru filozofów, którzy trzymają część swoich widelców. Rozwiązanie asymetryczne
+          (podnoszenie w rosnącej kolejności) dalej działa, rozwiązanie b) także,
+          ale limit lokaja $n - 1$ nie wystarcza i musi zostać przeliczony. Rośnie rywalizacja
+          i maleje liczba jedzących naraz.
+    \item \textbf{Filozof z innym tempem} (żarłok, który nie myśli) -- zbadane w rozdziale 5.5:
+          żadne rozwiązanie nie chroni sąsiadów takiego filozofa przed zagłodzeniem.
+    \item \textbf{Filozof ignorujący protokół} (np. w rozwiązaniu asymetrycznym podnoszący widelce w innej
+          kolejności albo omijający lokaja) -- przywraca cykl oczekiwania i możliwość blokady.
+          Poprawność rozwiązań a), c) i asymetrycznego zależy od tego, czy przestrzegają go wszyscy.
+    \item \textbf{Filozofowie dosiadający się i odchodzący w trakcie działania} -- zmiana sąsiadów lub widelców
+          filozofa, który właśnie trzyma widelec, prowadzi do błędów wykluczania. Zmianę trzeba
+          wykonywać, gdy dotknięci filozofowie nie jedzą. W rozwiązaniu b) zmianę można wykonać pod monitorem
+          stołu, w rozwiązaniu z lokajem limit musi zmieniać się razem z liczbą filozofów.
+\end{itemize}
+
+\needspace{28\baselineskip}
+\subsection{Podsumowanie}
+\textbf{Tabela 2} zestawia skutki badanych zmian.
+
+\begin{table}[H]
+    \centering
+    \renewcommand{\arraystretch}{1.3}
+    \small
+    \begin{tabular}{|>{\raggedright\arraybackslash}p{37mm}|>{\raggedright\arraybackslash}p{38mm}|>{\raggedright\arraybackslash}p{38mm}|>{\raggedright\arraybackslash}p{50mm}|}
+        \hline
+        \textbf{Zmiana} & \textbf{Blokada} & \textbf{Zagłodzenie} & \textbf{Wydajność} \\ \hline
+        dodatkowy filozof & a) dalej możliwa, mniej prawdopodobna; b), c), asym. nie & b): przy parzystym $n$ może głodować co drugi filozof & rośnie, gdy $n$ staje się parzyste ($\lfloor n/2 \rfloor$); 5 → 6: +52\% w b) \\ \hline
+        brakujący filozof & jak wyżej & jak wyżej & 5 → 4: bez zmian ($\lfloor n/2 \rfloor = 2$) \\ \hline
+        lokaj z limitem $\ge n$ & możliwa (rozwiązanie trywialne) & -- & -- \\ \hline
+        lokaj z limitem $< n - 1$ & nie & więcej czekających u lokaja & mniejsza (do $-24\%$) \\ \hline
+        zapasowy widelec na środku & nie, nawet dla a) & możliwe, wszyscy rywalizują o zapasowy & do 3 jedzących zamiast 2, ale wspólny monitor \\ \hline
+        widelec w pierścieniu & nie, nawet dla a) (łańcuch) & tak, filozofowie na pozycjach parzystych faworyzowani & najwyższa przy dużej rywalizacji, kosztem sprawiedliwości \\ \hline
+        brakujący widelec, awaria filozofa & -- & pewne dla sąsiadów, w a), c), asym. rozchodzi się łańcuchem & spada \\ \hline
+        filozof ignorujący protokół & możliwa w a), c), asym. & -- & -- \\ \hline
+    \end{tabular}
+    \caption{Skutki zmian konfiguracji problemu}
+\end{table}
 
 \section{Wnioski}
 Rozwiązanie trywialne prowadzi do blokady. Przy dużej rywalizacji następuje ona w ułamku
@@ -941,6 +1289,14 @@ to, czy filozof może trzymać widelec bez jedzenia, obecność wspólnego monit
 nie daje żadne z rozwiązań opartych na monitorach Javy, bo nie zachowują one kolejności oczekujących.
 Uzyskanie jej wymagałoby kolejki FIFO lub priorytetu dla najdłużej głodnego filozofa,
 kosztem przepustowości, podobnie jak kolejka biletowa w laboratorium 4.
+
+Zmiany konfiguracji (rozdział \ref{sec:config}) pokazują, że poprawność rozwiązań zależy od ich założeń.
+Lokaj jest poprawny tylko wtedy, gdy jego limit jest mniejszy od liczby filozofów,
+a rozwiązanie asymetryczne -- gdy wszyscy przestrzegają tego samego porządku widelców.
+Dodatkowy widelec może usunąć blokadę nawet z rozwiązania trywialnego i zwiększyć liczbę jedzących
+naraz, ale zależnie od położenia faworyzuje część filozofów.
+Dodanie filozofa nie usuwa blokady, a zmienia liczbę filozofów, którzy mogą jeść jednocześnie
+($\lfloor n/2 \rfloor$), oraz możliwość zagłodzenia co drugiego filozofa przy parzystym $n$.
 
 \begin{thebibliography}{9}
     \bibitem{dijkstra} E.W. Dijkstra: \textit{Hierarchical ordering of sequential processes}. Acta Informatica 1(2), 1971.

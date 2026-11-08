@@ -4,9 +4,25 @@
  */
 abstract class Table {
     final int n;
+    private int[][] pairs;
 
     Table(int n) {
         this.n = n;
+    }
+
+    /** Number of forks on the table, n unless a configuration adds one. */
+    int forkCount() {
+        return n;
+    }
+
+    /** Forks held by philosopher i while eating (used by the mutual exclusion check). */
+    int[] forksOf(int i) {
+        if (pairs == null) {
+            int[][] p = new int[n][];
+            for (int j = 0; j < n; j++) p[j] = new int[]{left(j), right(j)};
+            pairs = p;
+        }
+        return pairs[i];
     }
 
     int left(int i) {
@@ -38,6 +54,8 @@ abstract class Table {
             case "both" -> new BothTable(n);
             case "waiter" -> new WaiterTable(n);
             case "asym" -> new AsymmetricTable(n);
+            case "spare" -> new SpareForkTable(n);
+            case "ring" -> new ExtraForkTable(n);
             default -> throw new IllegalArgumentException(impl);
         };
     }

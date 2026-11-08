@@ -143,3 +143,98 @@ print("\nstarvation: impl meals per philosopher (mean), max wait ms")
 for impl in IMPLS:
     print(impl, [round(mean(m for m, _ in starve[impl, i])) for i in range(5)],
           [round(max(w for _, w in starve[impl, i]) / 1e3, 1) for i in range(5)])
+
+# changed configurations
+cfg = defaultdict(list)
+with open(ROOT / "csv" / "config.csv") as f:
+    for r in csv.DictReader(f):
+        cfg[r["experiment"], r["variant"], r["scenario"], int(r["n"])].append(r)
+
+
+def cmed(key, col):
+    return median(float(r[col]) for r in cfg[key])
+
+
+def cmeals(key):
+    rows = [[int(x) for x in r["meals"].split(";")] for r in cfg[key]]
+    return [mean(col) for col in zip(*rows)]
+
+
+def deadlock_pct(key):
+    return 100 * mean(int(r["deadlock"]) for r in cfg[key])
+
+
+CONTENDED = ["0/1", "1/1"]
+NS = [4, 5, 6]
+fig, ax = plt.subplots(1, 3, figsize=(17, 4.2))
+for j, s in enumerate(CONTENDED):
+    xs = np.arange(len(NS)) + (j - 0.5) * 0.35
+    ax[0].bar(xs, [deadlock_pct(("philosophers", "naive", s, n)) for n in NS], width=0.33,
+              color=["tab:orange", "tab:green"][j], label=SCENARIOS[s])
+ax[0].set_xticks(range(len(NS)), [str(n) for n in NS])
+ax[0].set_ylabel("przebiegi z blokadą w ciągu 1 s [%]")
+ax[0].set_title("a) trywialne: blokada", fontsize=10)
+ax[0].set_ylim(0, 115)
+ax[0].legend(fontsize=8)
+for a, s in zip(ax[1:], CONTENDED):
+    for impl, label in IMPLS.items():
+        marker, color = STYLE[impl]
+        a.plot(NS, [cmed(("philosophers", impl, s, n), "throughput") / n for n in NS], marker=marker, ms=5, lw=1.0,
+               color=color, label=label)
+    a.set_xticks(NS, [str(n) for n in NS])
+    a.set_ylabel("posiłki na sekundę na filozofa")
+    a.set_title(SCENARIOS[s], fontsize=10)
+    a.legend(fontsize=8)
+for a in ax:
+    a.set_xlabel("liczba filozofów n")
+    a.grid(True, alpha=0.3)
+fig.tight_layout()
+save(fig, "config_philosophers.png")
+
+FORK = {"naive": "brak (a) trywialne)", "spare": "zapasowy na środku stołu", "ring": "dodatkowy w pierścieniu"}
+FCOL = {"naive": "tab:red", "spare": "tab:blue", "ring": "tab:olive"}
+FSC = ["0/0", "0/1", "1/1"]
+fig, ax = plt.subplots(1, 3, figsize=(17, 4.2))
+for j, v in enumerate(FORK):
+    xs = np.arange(len(FSC)) + (j - 1) * 0.27
+    ax[0].bar(xs, [deadlock_pct(("extra_fork", v, s, 5)) for s in FSC], width=0.26, color=FCOL[v], label=FORK[v])
+    ax[1].bar(xs, [cmed(("extra_fork", v, s, 5), "jain") for s in FSC], width=0.26, color=FCOL[v], label=FORK[v])
+for a, title, yl in [(ax[0], "blokada", "przebiegi z blokadą w ciągu 1 s [%]"), (ax[1], "sprawiedliwość", "indeks Jaina posiłków")]:
+    a.set_xticks(range(len(FSC)), FSC)
+    a.set_xlabel("scenariusz (myślenie / jedzenie [ms])")
+    a.set_ylabel(yl)
+    a.set_title(title, fontsize=10)
+    a.grid(True, axis="y", alpha=0.3)
+ax[0].set_ylim(0, 115)
+ax[0].legend(fontsize=8)
+for j, v in enumerate(["spare", "ring"]):
+    xs = np.arange(5) + (j - 0.5) * 0.35
+    ax[2].bar(xs, cmeals(("extra_fork", v, "0/1", 5)), width=0.33, color=FCOL[v], label=FORK[v])
+ax[2].set_xticks(range(5), [f"F{i}" for i in range(5)])
+ax[2].set_ylabel("liczba posiłków w 1 s")
+ax[2].set_title("posiłki filozofów, " + SCENARIOS["0/1"], fontsize=10)
+ax[2].grid(True, axis="y", alpha=0.3)
+ax[2].legend(fontsize=8)
+fig.tight_layout()
+save(fig, "config_extra_fork.png")
+
+print("\nconfig philosophers: scenario n impl deadlock% throughput jain")
+for s in CONTENDED:
+    for n in NS:
+        for impl in ["naive", *IMPLS]:
+            k = ("philosophers", impl, s, n)
+            print(f"{s:5} n={n} {impl:7} {deadlock_pct(k):5.0f}% {cmed(k, 'throughput'):9.1f} {cmed(k, 'jain'):.3f}",
+                  [round(x) for x in cmeals(k)])
+print("\nwaiter limit 4: scenario n deadlock% median_time_ms throughput jain")
+for s in CONTENDED:
+    for n in (4, 6):
+        k = ("waiter_limit", "limit4", s, n)
+        ts = [float(r["time_ms"]) for r in cfg[k] if r["deadlock"] == "1"]
+        print(f"{s:5} n={n} {deadlock_pct(k):5.0f}% {median(ts) if ts else float('nan'):9.2f} {cmed(k, 'throughput'):9.1f} "
+              f"{cmed(k, 'jain'):.3f}")
+print("\nextra fork: scenario variant deadlock% throughput jain meals")
+for s in FSC:
+    for v in FORK:
+        k = ("extra_fork", v, s, 5)
+        print(f"{s:5} {v:6} {deadlock_pct(k):5.0f}% {cmed(k, 'throughput'):11.1f} {cmed(k, 'jain'):.3f}",
+              [round(x) for x in cmeals(k)])
