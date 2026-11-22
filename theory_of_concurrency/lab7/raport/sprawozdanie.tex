@@ -152,11 +152,10 @@ Wzorzec składa się z sześciu elementów:
 \end{figure}
 
 \subsection{Opis rozwiązania}
-Implementacja jest w języku \texttt{Java}. W porównaniu z przykładowym rozwiązaniem
-z poprzedniego roku poprawiamy trzy rzeczy:
+Implementacja jest w języku \texttt{Java}. Zwracamy uwagę na trzy elementy:
 \begin{itemize}
     \item \textbf{Scheduler nie kręci się w pętli.} Żądanie, którego strażnik nie jest spełniony,
-          nie wraca na koniec kolejki aktywacji (co powodowało aktywne czekanie i zmieniało kolejność
+          nie wraca na koniec kolejki aktywacji (to powodowałoby aktywne czekanie i zmieniało kolejność
           żądań), tylko trafia do osobnej kolejki oczekujących żądań swojego typu. Gdy kolejka
           aktywacji jest pusta, Scheduler czeka na zmiennej warunkowej.
     \item \textbf{Proxy zwraca Future.} \texttt{put} zwraca \texttt{Future<Void>}, a \texttt{take}
