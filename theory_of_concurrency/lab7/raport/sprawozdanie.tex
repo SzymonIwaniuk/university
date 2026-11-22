@@ -159,7 +159,7 @@ Implementacja jest w języku \texttt{Java}. Zwracamy uwagę na trzy elementy:
           żądań), tylko trafia do osobnej kolejki oczekujących żądań swojego typu. Gdy kolejka
           aktywacji jest pusta, Scheduler czeka na zmiennej warunkowej.
     \item \textbf{Proxy zwraca Future.} \texttt{put} zwraca \texttt{Future<Void>}, a \texttt{take}
-          \texttt{Future<Integer>} z pobraną wartością, więc konsument rzeczywiście dostaje element.
+          \texttt{Future<Integer>} z pobraną wartością, więc konsument otrzymuje pobraną wartość.
     \item \textbf{Pomiary.} Porównujemy aktywny obiekt z buforem zrealizowanym jako monitor Javy
           i sprawdzamy, kiedy oddzielenie wywołania od wykonania się opłaca.
 \end{itemize}
@@ -532,7 +532,8 @@ Wzorzec Active Object oddziela wywołanie metody od jej wykonania: Proxy w wątk
 tworzy żądanie, a jedyny wątek Schedulera wykonuje operacje na Servancie, więc Servant nie potrzebuje
 żadnej synchronizacji, a warunki synchronizacji są zapisane jawnie w strażnikach.
 Dzięki kolejkom oczekujących żądań Scheduler nie czeka aktywnie i wykonuje żądania tego samego
-typu w kolejności nadejścia, czego nie zapewniało ponowne wstawianie żądania do kolejki aktywacji.
+typu w kolejności nadejścia. Ponowne wstawianie żądania na koniec kolejki aktywacji zmieniałoby tę kolejność,
+więc zamiast niego używamy osobnych kolejek oczekujących.
 
 Wydajność zależy od stosunku kosztu operacji na obiekcie do narzutu wzorca, który w naszej implementacji
 wynosi 3--5 \textmu s na żądanie. Gdy operacja na buforze jest tania, aktywny obiekt jest wielokrotnie
