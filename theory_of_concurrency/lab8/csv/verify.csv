@@ -1,0 +1,9 @@
+check,detail,value
+executors,runs_equal_to_sequential,198
+area,570,1.5164
+area,5000,1.5104
+point,c=0_left_iterations,0
+point,corner_left_iterations,569
+racy,runs,30
+racy,runs_with_different_image,1
+racy,max_different_pixels,5261
